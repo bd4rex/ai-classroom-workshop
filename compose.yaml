@@ -1,0 +1,18 @@
+name: ai-classroom-workshop
+services:
+  classroom:
+    build: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "3218:3218"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TEACHER_PASSWORD: ${TEACHER_PASSWORD:-}
+    volumes:
+      - classroom-data:/app/data
+      - ./config:/app/config:ro
+    stop_grace_period: 20s
+volumes:
+  classroom-data:
