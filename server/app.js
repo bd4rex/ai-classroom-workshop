@@ -200,7 +200,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.1.0",
+    version: "0.2.0",
   }));
   function studentState(request, reply) {
     const person = student(request);
@@ -265,15 +265,36 @@ export async function buildApp({
   app.post("/api/teacher/control", async (request) => {
     teacher(request);
     const body = request.body;
-    if (!body || !kinds.includes(body.kind) || typeof body.open !== "boolean")
-      throw new AppError("请选择有效的环节和开关状态");
-    if (body.roomId !== store.meta("current"))
+    if (!body || !["page", "stage", "pause", "end"].includes(body.action))
+      throw new AppError("请选择有效的课堂操作");
+    const current = store.room();
+    if (body.roomId !== current.id)
       throw new AppError("课堂已更新，请刷新后操作", 409);
-    store.run(
-      `UPDATE rooms SET ${body.kind}_open=? WHERE id=?`,
-      Number(body.open),
-      body.roomId,
-    );
+    if (body.revision !== current.revision)
+      throw new AppError("课堂节奏已变化，请根据最新状态操作", 409);
+    const next = { ...current };
+    if (body.action === "page") {
+      if (typeof body.open !== "boolean")
+        throw new AppError("页面开关状态不正确");
+      next.pageOpen = body.open;
+    } else if (body.action === "stage") {
+      if (!["waiting", ...kinds].includes(body.stage))
+        throw new AppError("请选择有效的主题");
+      if (current.stage === "ended")
+        throw new AppError("本节课已经结束，请开始新课堂", 409);
+      next.stage = body.stage;
+      next.paused = false;
+    } else if (body.action === "pause") {
+      if (typeof body.paused !== "boolean")
+        throw new AppError("暂停状态不正确");
+      if (!kinds.includes(current.stage) || !current.pageOpen)
+        throw new AppError("请先开放课堂并进入一个主题", 409);
+      next.paused = body.paused;
+    } else {
+      next.stage = "ended";
+      next.paused = true;
+    }
+    store.control(next);
     broadcast();
     return state();
   });
@@ -282,8 +303,8 @@ export async function buildApp({
     const current = store.room();
     if (request.body?.roomId !== current.id)
       throw new AppError("课堂已更新，请刷新后操作", 409);
-    if (current.discoverOpen || current.designOpen)
-      throw new AppError("请先关闭两个环节，再开始新课堂", 409);
+    if (current.pageOpen && current.stage !== "ended")
+      throw new AppError("请先结束课堂或关闭课堂页面，再开始新课堂", 409);
     store.newRoom();
     broadcast();
     return state();
@@ -309,6 +330,8 @@ export async function buildApp({
       const existing = student(request);
       return state(existing);
     } catch {}
+    if (store.room().stage === "ended")
+      throw new AppError("本节课堂已结束，请向老师索取新课堂码", 409);
     const value = token(),
       id = randomUUID();
     store.run(
@@ -331,10 +354,19 @@ export async function buildApp({
       body = request.body ?? {};
     limit(`submit:${person.id}`, 20);
     if (!kinds.includes(kind)) throw new AppError("环节不存在", 404);
-    let content, name, school;
+    const needsIdentity = !person.name || !person.school;
+    const name = person.name || str(body.name, "姓名", 40);
+    const school = person.school || str(body.school, "学校", 100);
+    if (
+      !needsIdentity &&
+      ((body.name !== undefined &&
+        (typeof body.name !== "string" || body.name.trim() !== name)) ||
+        (body.school !== undefined &&
+          (typeof body.school !== "string" || body.school.trim() !== school)))
+    )
+      throw new AppError("学校和姓名沿用首次提交的信息", 409);
+    let content;
     if (kind === "discover") {
-      name = str(body.name, "姓名", 40);
-      school = str(body.school, "学校", 100);
       content = {
         field: str(body.field, "领域", 80),
         scenario: str(body.scenario, "应用场景", 500),
@@ -358,22 +390,17 @@ export async function buildApp({
           (name === person.name && school === person.school))
       )
         return { ok: true, repeated: true };
-      throw new AppError("本环节已经提交，请查看下方记录", 409);
+      throw new AppError("本主题已经提交，请查看自己的记录", 409);
     }
     if (!store.room()[`${kind}Open`])
-      throw new AppError("老师尚未开放或已关闭本环节提交", 409);
-    if (kind === "discover" && !schools.includes(school))
+      throw new AppError(
+        "课堂节奏已变化，当前主题尚未开放、已暂停或已结束",
+        409,
+      );
+    if (needsIdentity && !schools.includes(school))
       throw new AppError("请从下拉列表选择学校");
-    if (
-      kind === "design" &&
-      !store.get(
-        "SELECT id FROM submissions WHERE participant_id=? AND kind='discover'",
-        person.id,
-      )
-    )
-      throw new AppError("请先完成“一起发现”的第一次提交", 409);
     store.transaction(() => {
-      if (kind === "discover")
+      if (needsIdentity)
         store.run(
           "UPDATE participants SET name=?,school=? WHERE id=?",
           name,
@@ -393,9 +420,22 @@ export async function buildApp({
     return { ok: true };
   });
   app.get("/api/board", async (request) => {
-    audience(request);
+    const actor = audience(request);
     const kind = request.query.kind;
     if (!kinds.includes(kind)) throw new AppError("环节不存在", 404);
+    if (request.query.role !== "teacher") {
+      const current = store.room();
+      if (!current.pageOpen || current.stage !== kind)
+        throw new AppError("请跟随老师查看当前主题", 403);
+      if (
+        !store.get(
+          "SELECT id FROM submissions WHERE participant_id=? AND kind=?",
+          actor.id,
+          kind,
+        )
+      )
+        throw new AppError("先提交本主题的回答，再查看同学的分享", 403);
+    }
     const page = Number(request.query.page || 1),
       query = (request.query.q || "").trim();
     if (

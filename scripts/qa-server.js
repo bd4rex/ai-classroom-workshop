@@ -4,17 +4,18 @@ import { buildApp } from "../server/app.js";
 process.umask(0o077);
 mkdirSync("output/playwright", { recursive: true });
 const dataDir = mkdtempSync(resolve("output/qa-"));
+const port = Number(process.env.PORT || 3219);
 const app = await buildApp({
   dataDir,
   initialPassword: "isolated-browser-test-only",
 });
 try {
-  await app.listen({ host: "127.0.0.1", port: 3218 });
+  await app.listen({ host: "127.0.0.1", port });
 } catch (error) {
   await app.close();
   throw error;
 }
-console.log("Isolated QA server: http://127.0.0.1:3218/teacher");
+console.log(`Isolated QA server: http://127.0.0.1:${port}/teacher`);
 console.log("Test-only password: isolated-browser-test-only");
 for (const signal of ["SIGINT", "SIGTERM"])
   process.once(signal, async () => {

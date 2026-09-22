@@ -44,6 +44,22 @@ export function createStore(directory) {
       content TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(participant_id,kind));
     CREATE INDEX IF NOT EXISTS participants_room ON participants(room_id);
     CREATE INDEX IF NOT EXISTS submissions_room ON submissions(room_id,kind,id);`);
+  // Upgrade the original independent switches without dropping rooms or answers.
+  if (
+    !db
+      .prepare("PRAGMA table_info(rooms)")
+      .all()
+      .some((column) => column.name === "stage")
+  ) {
+    db.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE rooms ADD COLUMN stage TEXT NOT NULL DEFAULT 'waiting';
+      ALTER TABLE rooms ADD COLUMN page_open INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE rooms ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE rooms ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+      UPDATE rooms SET page_open=CASE WHEN discover_open=1 OR design_open=1 THEN 1 ELSE 0 END,
+        stage=CASE WHEN design_open=1 THEN 'design' WHEN discover_open=1 THEN 'discover' ELSE 'waiting' END;
+      COMMIT;`);
+  }
   const get = (sql, ...values) => db.prepare(sql).get(...values);
   const all = (sql, ...values) => db.prepare(sql).all(...values);
   const run = (sql, ...values) => db.prepare(sql).run(...values);
@@ -66,7 +82,9 @@ export function createStore(directory) {
   }
   function newRoom() {
     return transaction(() => {
-      run("UPDATE rooms SET discover_open=0,design_open=0");
+      run(
+        "UPDATE rooms SET discover_open=0,design_open=0,page_open=0,stage='ended',paused=1,revision=revision+1",
+      );
       let code;
       do {
         code = String(randomInt(100000, 1000000));
@@ -87,10 +105,27 @@ export function createStore(directory) {
     return {
       id: value.id,
       code: value.code,
-      discoverOpen: !!value.discover_open,
-      designOpen: !!value.design_open,
+      stage: value.stage,
+      pageOpen: !!value.page_open,
+      paused: !!value.paused,
+      revision: value.revision,
+      discoverOpen:
+        !!value.page_open && !value.paused && value.stage === "discover",
+      designOpen:
+        !!value.page_open && !value.paused && value.stage === "design",
       createdAt: value.created_at,
     };
+  }
+  function control(next) {
+    run(
+      "UPDATE rooms SET stage=?,page_open=?,paused=?,revision=revision+1,discover_open=?,design_open=? WHERE id=?",
+      next.stage,
+      Number(next.pageOpen),
+      Number(next.paused),
+      Number(next.pageOpen && !next.paused && next.stage === "discover"),
+      Number(next.pageOpen && !next.paused && next.stage === "design"),
+      next.id,
+    );
   }
   function counts() {
     const id = meta("current");
@@ -114,6 +149,7 @@ export function createStore(directory) {
     meta,
     setMeta,
     room,
+    control,
     newRoom,
     counts,
     transaction,

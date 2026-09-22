@@ -1,239 +1,139 @@
 // prettier-ignore
-// CLI browser regression. Use only with the isolated QA server documented in TEST_REPORT.md.
+// Run only against the isolated QA server on port 3219 (see TEST_REPORT.md).
 async (page) => {
-  const base = "http://127.0.0.1:3218";
+  const base = "http://127.0.0.1:3219";
   const problems = [];
   const watch = (p) => {
     p.on("pageerror", (e) => problems.push(e.message));
-    p.on("console", (e) => {
-      if (e.type() === "error") problems.push(e.text());
-    });
+    p.on("console", (e) => { if (e.type() === "error") problems.push(e.text()); });
   };
+  const check = (value, message) => { if (!value) throw Error(message); };
+  const button = (p, name) => p.getByRole("button", { name, exact: true });
+  const field = (p, name) => p.getByRole("textbox", { name: `${name} 必填`, exact: true });
+  const locked = (p) => p.getByRole("heading", { name: "先写下你的想法", exact: true });
+  const post = (p, name) => p.getByRole("article", { name: `${name}的分享`, exact: true });
+  const submit = (p) => button(p, "提交并查看同学分享");
+  const pauseText = "老师暂停了填写，先听一听大家的想法。已解锁的分享仍可阅读。";
   watch(page);
   await page.goto(base + "/teacher");
-  await page
-    .getByRole("textbox", { name: "教师密码", exact: true })
-    .or(page.getByRole("switch", { name: "一起发现提交开关" }))
-    .first()
-    .waitFor();
-  if (
-    await page
-      .getByRole("textbox", { name: "教师密码", exact: true })
-      .isVisible()
-  ) {
-    await page
-      .getByRole("textbox", { name: "教师密码", exact: true })
-      .fill("isolated-browser-test-only");
-    await page
-      .getByRole("button", { name: "进入教师工作台", exact: true })
-      .click();
+  const password = page.getByRole("textbox", { name: "教师密码", exact: true });
+  const gate = page.getByRole("switch", { name: "课堂页面开关", exact: true });
+  await password.or(gate).first().waitFor();
+  if (await password.isVisible()) {
+    await password.fill("isolated-browser-test-only");
+    await button(page, "进入教师工作台").click();
   }
-  await page.getByRole("switch", { name: "一起发现提交开关" }).waitFor();
-  const discoverSwitch = page.getByRole("switch", { name: "一起发现提交开关" });
-  const designSwitch = page.getByRole("switch", { name: "一起设计提交开关" });
-  if ((await discoverSwitch.getAttribute("aria-checked")) === "true")
-    await discoverSwitch.click();
-  if ((await designSwitch.getAttribute("aria-checked")) === "true")
-    await designSwitch.click();
+  await gate.waitFor();
+  if (await gate.getAttribute("aria-checked") === "true") await gate.click();
   await page.getByText("课堂工具", { exact: true }).click();
-  await page.getByRole("button", { name: "开始新一节课", exact: true }).click();
-  const oldLink = await page
-    .getByRole("textbox", { name: "学生加入链接" })
-    .inputValue();
-  await page
-    .getByRole("button", { name: "确认开始新课堂", exact: true })
-    .click();
-  await page.waitForFunction(
-    (old) =>
-      document.querySelector('[aria-label="学生加入链接"]').value !== old &&
-      document
-        .querySelector('[aria-label="学生加入链接"]')
-        .value.startsWith("http"),
-    oldLink,
-  );
-  const link = await page
-    .getByRole("textbox", { name: "学生加入链接" })
-    .inputValue();
+  await button(page, "开始新一节课").click();
+  const oldLink = await page.getByRole("textbox", { name: "学生加入链接" }).inputValue();
+  await button(page, "确认开始新课堂").click();
+  await page.waitForFunction((old) => {
+    const link = document.querySelector('[aria-label="学生加入链接"]')?.value;
+    return link?.startsWith("http") && link !== old;
+  }, oldLink);
+  const link = await page.getByRole("textbox", { name: "学生加入链接" }).inputValue();
   const browser = page.context().browser();
-  const ca = await browser.newContext({
-    viewport: { width: 1366, height: 1000 },
-  });
-  const cb = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-  });
-  const a = await ca.newPage(),
-    b = await cb.newPage();
-  watch(a);
-  watch(b);
+  const ca = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const cb = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+  const a = await ca.newPage(), b = await cb.newPage();
+  watch(a); watch(b);
   try {
     for (const p of [a, b]) {
       await p.goto(link);
-      await p.getByRole("button", { name: "加入课堂", exact: true }).click();
-      await p
-        .getByRole("button", { name: "第一次提交", exact: true })
-        .waitFor();
-      if (
-        await p
-          .getByRole("button", { name: "第一次提交", exact: true })
-          .isEnabled()
-      )
-        throw Error("发现环节提前可提交");
+      await button(p, "加入课堂").click();
+      await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
     }
-    await discoverSwitch.click();
-    await a
-      .getByRole("combobox", { name: "学校 必填", exact: true })
-      .selectOption({ index: 1 });
-    await a
-      .getByRole("textbox", { name: "姓名 必填", exact: true })
-      .fill("小禾（演示）");
-    await a
-      .getByRole("textbox", { name: "领域 必填", exact: true })
-      .fill("交通出行");
-    await a
-      .getByRole("textbox", { name: "应用场景 必填", exact: true })
-      .fill("导航根据实时路况推荐路线，避开拥堵。");
-    await a
-      .getByRole("textbox", { name: "价值 必填", exact: true })
-      .fill("减少等待时间，让出行更方便。");
+    await gate.click();
+    await a.getByRole("heading", { name: "已加入课堂，准备好出发", exact: true }).waitFor();
+    await button(page, "切换到一起发现").click();
+    for (const p of [a, b]) {
+      await field(p, "姓名").waitFor();
+      await locked(p).waitFor();
+    }
+    await a.getByRole("combobox", { name: "学校 必填", exact: true }).selectOption({ index: 1 });
+    await field(a, "姓名").fill("小禾（演示）");
+    await field(a, "领域").fill("交通出行");
+    await field(a, "应用场景").fill("导航根据实时路况推荐路线，避开拥堵。");
+    await field(a, "价值").fill("节省出行时间，让交通更顺畅。");
+    await b.getByRole("combobox", { name: "学校 必填", exact: true }).selectOption({ index: 2 });
+    await field(b, "姓名").fill("小宇（演示）");
+    await field(b, "领域").fill("校园学习草稿");
+    await b.reload();
+    await field(b, "领域").waitFor();
+    check(await field(b, "领域").inputValue() === "校园学习草稿", "刷新丢失草稿");
+    await b.screenshot({ path: "output/playwright/student-locked-tablet-v2.png", fullPage: true });
+    await submit(a).click();
+    await post(a, "小禾（演示）").waitFor();
+    check(await locked(b).isVisible() && await post(b, "小禾（演示）").count() === 0, "未提交者看到同学内容");
+    await button(page, "暂停填写").click();
+    await b.getByText(pauseText, { exact: true }).waitFor();
+    check(!await submit(b).isEnabled(), "暂停后仍可提交");
+    check(await a.getByText(pauseText, { exact: true }).isVisible(), "已提交者未收到暂停提示");
+    check(await post(a, "小禾（演示）").isVisible(), "暂停隐藏了已解锁分享");
+    await button(page, "继续填写").click();
+    await button(page, "切换到一起设计").click();
+    for (const p of [a, b]) { await field(p, "基本功能").waitFor(); await locked(p).waitFor(); }
+    check(await submit(b).isEnabled(), "未提交发现的学生不能直接进入设计");
+    check(await field(b, "姓名").inputValue() === "小宇（演示）", "切换主题丢失身份草稿");
+    await field(b, "场景").fill("学校图书馆寻找适合自己的书。");
+    await field(b, "基本功能").fill("根据兴趣推荐图书，用语音介绍内容，并指引书架位置。");
+    await submit(b).click();
+    await post(b, "小宇（演示）").waitFor();
+    check(await locked(a).isVisible() && await post(a, "小宇（演示）").count() === 0, "发现提交错误解锁设计分享");
+    await field(a, "场景").fill("帮助独自在家的老人照顾阳台花草。");
+    await field(a, "基本功能").fill("识别叶片状态，提醒浇水，并根据天气自动调整遮阳。");
+    await submit(a).click();
+    await post(b, "小禾（演示）").waitFor();
+    await post(a, "小宇（演示）").waitFor();
+    await button(page, "切换到一起发现").click();
+    await field(b, "领域").waitFor();
+    check(await field(b, "领域").inputValue() === "校园学习草稿", "切回发现丢失草稿");
+    check(await locked(b).isVisible(), "设计提交错误解锁发现分享");
+    check(await field(b, "姓名").count() === 0, "已提交身份没有沿用");
+    await field(b, "应用场景").fill("语音转文字，帮助我们整理课堂笔记。");
+    await field(b, "价值").fill("更方便地回顾知识，也帮助听力不便的同学。");
+    await submit(b).click();
+    await post(a, "小宇（演示）").waitFor();
     await a.reload();
-    await a.getByRole("textbox", { name: "姓名 必填", exact: true }).waitFor();
-    if (
-      (await a
-        .getByRole("textbox", { name: "姓名 必填", exact: true })
-        .inputValue()) !== "小禾（演示）"
-    )
-      throw Error("刷新丢失草稿");
-    await a.getByRole("button", { name: "第一次提交", exact: true }).click();
-    await a.getByText("第一次提交成功", { exact: true }).waitFor();
-    await b
-      .getByRole("row")
-      .filter({ hasText: "小禾（演示）" })
-      .waitFor({ timeout: 5000 });
-    await page
-      .getByRole("row")
-      .filter({ hasText: "小禾（演示）" })
-      .waitFor({ timeout: 5000 });
-    await discoverSwitch.click();
-    await b.waitForFunction(
-      () =>
-        document.querySelector("#discover-name").disabled ||
-        document.querySelector("#discover-name").matches(":disabled"),
-    );
-    if (
-      await b
-        .getByRole("button", { name: "第一次提交", exact: true })
-        .isEnabled()
-    )
-      throw Error("关闭后仍可点击提交");
-    await designSwitch.click();
-    if (
-      await b
-        .getByRole("button", { name: "第二次提交", exact: true })
-        .isEnabled()
-    )
-      throw Error("未完成第一步却能提交第二步");
-    await a
-      .getByRole("textbox", { name: "场景 必填", exact: true })
-      .fill("帮助独自在家的老人照顾阳台花草。");
-    await a
-      .getByRole("textbox", { name: "基本功能 必填", exact: true })
-      .fill("识别叶片状态，提醒浇水，并根据天气自动调整遮阳。");
-    await a.getByRole("button", { name: "第二次提交", exact: true }).click();
-    await a.getByText("第二次提交成功", { exact: true }).waitFor();
-    await b.getByRole("tab", { name: /一起设计/ }).click();
-    await b
-      .getByRole("row")
-      .filter({ hasText: "帮助独自在家的老人" })
-      .waitFor({ timeout: 5000 });
-    await discoverSwitch.click();
-    await b
-      .getByRole("combobox", { name: "学校 必填", exact: true })
-      .selectOption({ index: 1 });
-    await b
-      .getByRole("textbox", { name: "姓名 必填", exact: true })
-      .fill("小宇（演示）");
-    await b
-      .getByRole("textbox", { name: "领域 必填", exact: true })
-      .fill("校园学习");
-    await b
-      .getByRole("textbox", { name: "应用场景 必填", exact: true })
-      .fill("语音转文字，帮助我们整理课堂笔记。");
-    await b
-      .getByRole("textbox", { name: "价值 必填", exact: true })
-      .fill("更方便地回顾知识，也帮助听力不便的同学。");
-    await b.getByRole("button", { name: "第一次提交", exact: true }).click();
-    await b.getByText("第一次提交成功", { exact: true }).waitFor();
-    await b
-      .getByRole("textbox", { name: "场景 必填", exact: true })
-      .fill("学校图书馆寻找适合自己的书。");
-    await b
-      .getByRole("textbox", { name: "基本功能 必填", exact: true })
-      .fill("根据兴趣推荐图书，用语音介绍内容，并指引书架位置。");
-    await b.getByRole("button", { name: "第二次提交", exact: true }).click();
-    await b.getByText("第二次提交成功", { exact: true }).waitFor();
-    await a.getByRole("tab", { name: /一起设计/ }).click();
-    await a
-      .getByRole("row")
-      .filter({ hasText: "小宇（演示）" })
-      .waitFor({ timeout: 5000 });
-    await discoverSwitch.click();
-    await designSwitch.click();
-    await a.reload();
-    await a.getByText("第二次提交成功", { exact: true }).waitFor();
-    await a.getByRole("row").filter({ hasText: "小宇（演示）" }).waitFor();
-    await a.getByRole("textbox", { name: "搜索共享列表" }).fill("小禾");
-    await a.waitForFunction(
-      () => document.querySelectorAll("tbody tr").length === 1,
-    );
-    await a.getByRole("textbox", { name: "搜索共享列表" }).fill("");
-    await a.waitForFunction(
-      () => document.querySelectorAll("tbody tr").length === 2,
-    );
-    await page.setViewportSize({ width: 1366, height: 1000 });
-    await page.getByText("课堂工具", { exact: true }).click();
-    await page.screenshot({
-      path: "output/playwright/teacher-desktop.png",
-      fullPage: true,
+    await post(a, "小宇（演示）").waitFor();
+    const search = a.getByRole("textbox", { name: "搜索同学分享", exact: true });
+    await search.fill("小禾");
+    await post(a, "小宇（演示）").waitFor({ state: "hidden" });
+    check(await post(a, "小禾（演示）").count() === 1, "搜索结果不完整");
+    await search.fill("");
+    await post(a, "小宇（演示）").waitFor();
+    const desktop = await a.evaluate(() => {
+      const [left, right] = [...document.querySelectorAll(".student-split > *")].map((el) => el.getBoundingClientRect());
+      return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, sideBySide: right.x >= left.right && right.y === left.y };
     });
-    await a.screenshot({
-      path: "output/playwright/student-desktop.png",
-      fullPage: true,
+    const tablet = await b.evaluate(() => {
+      const [left, right] = [...document.querySelectorAll(".student-split > *")].map((el) => el.getBoundingClientRect());
+      return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, sideBySide: right.x >= left.right && right.y === left.y };
     });
-    await b.getByRole("tab", { name: /一起发现/ }).click();
-    await b.getByRole("row").filter({ hasText: "小宇（演示）" }).waitFor();
-    const mobile = await b.evaluate(() => ({
-      width: innerWidth,
-      scrollWidth: document.documentElement.scrollWidth,
-      tableScroll:
-        document.querySelector(".table-scroll").scrollWidth >
-        document.querySelector(".table-scroll").clientWidth,
-    }));
-    if (mobile.scrollWidth > mobile.width) throw Error("手机整页横向溢出");
-    if (!mobile.tableScroll) throw Error("手机列表无法横向滚动");
-    await b.screenshot({
-      path: "output/playwright/student-mobile.png",
-      fullPage: true,
-    });
-    if (problems.length) throw Error(JSON.stringify(problems));
-    return {
-      passed: true,
-      actors: "one teacher, two isolated student contexts",
-      checks: [
-        "independent switches",
-        "waiting before open",
-        "two submissions",
-        "identity reuse",
-        "live peer rows",
-        "draft reload",
-        "submitted reload",
-        "search",
-        "mobile 390px",
-        "no console errors",
-      ],
-      mobile,
-    };
-  } finally {
-    await ca.close();
-    await cb.close();
-  }
+    check(desktop.sideBySide && desktop.width === desktop.scrollWidth, "桌面左右布局或宽度错误");
+    check(tablet.sideBySide && tablet.width === tablet.scrollWidth, "平板横屏左右布局或宽度错误");
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.screenshot({ path: "output/playwright/teacher-desktop-v2.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-desktop-v2.png", fullPage: true });
+    await b.screenshot({ path: "output/playwright/student-tablet-v2.png", fullPage: true });
+    await a.setViewportSize({ width: 1920, height: 1080 });
+    const large = await a.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
+    check(large.width === large.scrollWidth, "大屏页面横向溢出");
+    await a.screenshot({ path: "output/playwright/student-large-v2.png", fullPage: true });
+    await gate.click();
+    for (const p of [a, b]) {
+      await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
+      check(await p.getByRole("article").count() === 0, "总开关关闭后仍显示作品");
+    }
+    await gate.click();
+    await post(a, "小宇（演示）").waitFor();
+    await button(page, "结束本节课").click();
+    await button(page, "确认结束课堂").click();
+    for (const p of [a, b]) await p.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+    check(await page.getByRole("row").filter({ hasText: "小宇（演示）" }).count() === 1, "结束后教师记录丢失");
+    check(problems.length === 0, JSON.stringify(problems));
+    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
+  } finally { await ca.close(); await cb.close(); }
 }

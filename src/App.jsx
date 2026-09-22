@@ -7,6 +7,11 @@ import {
   Copy,
   Download,
   Lightbulb,
+  LockKeyhole,
+  Pause,
+  Play,
+  Monitor,
+  CircleCheck,
   LogOut,
   Search,
   Sparkles,
@@ -227,7 +232,7 @@ function Entry({ teacher, refresh }) {
         <h2>{teacher ? "准备好，一起出发" : "加入我们的共创"}</h2>
         <p>
           {teacher
-            ? "登录后，分别控制两个固定环节的开放。"
+            ? "由你控制页面开关、主题切换和课堂节奏。"
             : "输入老师提供的 6 位课堂码，即可参与。"}
         </p>
         <form onSubmit={submit}>
@@ -258,13 +263,13 @@ function Entry({ teacher, refresh }) {
         <p className="fine-print">
           {teacher
             ? "首次启动时，教师密码显示在服务终端中。"
-            : "无需注册账号。提交的学校、姓名和作品会在本课堂中相互可见。"}
+            : "无需注册账号。每个主题提交后，才能查看同学的学校、姓名和作品。"}
         </p>
       </section>
     </main>
   );
 }
-function ActivityTitle({ kind, open, submitted }) {
+function ActivityTitle({ kind, open, submitted, paused }) {
   const a = activities[kind],
     Icon = a.icon;
   return (
@@ -283,6 +288,8 @@ function ActivityTitle({ kind, open, submitted }) {
             </>
           ) : open ? (
             "开放提交中"
+          ) : paused ? (
+            "老师已暂停"
           ) : (
             "等待老师开放"
           )}
@@ -338,22 +345,33 @@ function Field({
   );
 }
 function StudentActivity({ kind, state, refresh }) {
-  const { room, me, submissions, schools } = state,
-    submitted = submissions[kind],
+  const { room, me, submissions, schools } = state;
+  const submitted = submissions[kind],
     open = room[`${kind}Open`];
+  const needsIdentity = !me.name || !me.school;
+  const [identity, changeIdentity] = useDraft(
+    `ai-workshop:${room.id}:${me.id}:identity`,
+    { name: "", school: "" },
+  );
   const [draft, change] = useDraft(
     `ai-workshop:${room.id}:${me.id}:${kind}`,
     kind === "discover" ? emptyDiscovery : emptyDesign,
   );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const prerequisite = kind === "design" && !submissions.discover;
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError("");
+    const content =
+      kind === "discover"
+        ? { field: draft.field, scenario: draft.scenario, value: draft.value }
+        : { scenario: draft.scenario, function: draft.function };
     try {
-      await api(`/api/student/submit/${kind}`, draft);
+      await api(`/api/student/submit/${kind}`, {
+        ...content,
+        ...(needsIdentity ? identity : {}),
+      });
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -369,12 +387,17 @@ function StudentActivity({ kind, state, refresh }) {
   });
   return (
     <article className={`activity student-activity ${kind}`}>
-      <ActivityTitle kind={kind} open={open} submitted={submitted} />
+      <ActivityTitle
+        kind={kind}
+        open={open}
+        submitted={submitted}
+        paused={room.paused}
+      />
       {submitted ? (
         <div className="submitted-content">
           <div className="saved-title">
             <Check size={18} />
-            {kind === "discover" ? "第一次提交成功" : "第二次提交成功"}
+            本主题提交成功
           </div>
           <p className="identity">
             {me.school}
@@ -395,38 +418,44 @@ function StudentActivity({ kind, state, refresh }) {
               {kind === "discover" ? submitted.value : submitted.function}
             </dd>
           </dl>
-          <p className="saved-hint">
-            已加入下方共享列表，其他同学可以看到你的想法。
-          </p>
+          <p className="saved-hint">同学的分享已解锁，一起看看其他人的想法。</p>
         </div>
       ) : (
         <form onSubmit={submit}>
-          <fieldset disabled={!open || prerequisite || busy}>
+          <fieldset disabled={!open || busy}>
+            {needsIdentity ? (
+              <div className="field-pair">
+                <Field id={`${kind}-school`} label="学校">
+                  <select
+                    id={`${kind}-school`}
+                    value={identity.school}
+                    onChange={(e) => changeIdentity("school", e.target.value)}
+                    required
+                  >
+                    <option value="">请选择学校</option>
+                    {schools.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field
+                  id={`${kind}-name`}
+                  label="姓名"
+                  value={identity.name}
+                  change={(v) => changeIdentity("name", v)}
+                  maxLength={40}
+                  placeholder="你的姓名"
+                />
+              </div>
+            ) : (
+              <p className="identity">
+                {me.school} · {me.name}
+              </p>
+            )}
             {kind === "discover" ? (
               <>
-                <div className="field-pair">
-                  <Field id="discover-school" label="学校">
-                    <select
-                      id="discover-school"
-                      value={draft.school}
-                      onChange={(e) => change("school", e.target.value)}
-                      required
-                    >
-                      <option value="">请选择学校</option>
-                      {schools.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field
-                    {...editable("name")}
-                    label="姓名"
-                    maxLength={40}
-                    placeholder="你的姓名"
-                  />
-                </div>
                 <Field
                   {...editable("field")}
                   label="领域"
@@ -450,11 +479,6 @@ function StudentActivity({ kind, state, refresh }) {
               </>
             ) : (
               <>
-                <p className="identity">
-                  {me.name
-                    ? `${me.school} · ${me.name}`
-                    : "学校和姓名将沿用第一次提交的信息"}
-                </p>
                 <Field
                   {...editable("scenario")}
                   label="场景"
@@ -471,33 +495,21 @@ function StudentActivity({ kind, state, refresh }) {
                 />
                 <div className="thought-note">
                   <Sparkles size={18} />
-                  <p>
-                    大胆想象，也想一想：
-                    <br />
-                    这个设计能为谁解决什么问题？
-                  </p>
+                  <p>大胆想象，也想一想：这个设计能为谁解决什么问题？</p>
                 </div>
               </>
             )}
             <button
               className={`primary wide ${kind === "design" ? "warm" : ""}`}
-              disabled={!open || prerequisite || busy}
+              disabled={!open || busy}
             >
-              {busy
-                ? "正在提交…"
-                : kind === "discover"
-                  ? "第一次提交"
-                  : "第二次提交"}
+              {busy ? "正在提交…" : "提交并查看同学分享"}
               <ArrowRight size={17} />
             </button>
           </fieldset>
           <ErrorText>{error}</ErrorText>
           <p className="form-hint">
-            {prerequisite
-              ? "先完成“一起发现”，再开始第二次提交。"
-              : !open
-                ? "老师开放本环节后，就可以填写并提交。"
-                : "每个环节提交一次，提交后全班可见。"}
+            先独立思考；提交后，本主题的同学分享自动开放。
           </p>
         </form>
       )}
@@ -505,18 +517,23 @@ function StudentActivity({ kind, state, refresh }) {
   );
 }
 function TeacherControls({ state, refresh }) {
+  const { room, counts } = state;
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const control = async (kind) => {
+    [error, setError] = useState(""),
+    [ending, setEnding] = useState(false);
+  const ended = room.stage === "ended",
+    active = !!activities[room.stage];
+  const control = async (change) => {
     setBusy(true);
     setError("");
     try {
       await api("/api/teacher/control", {
-        roomId: state.room.id,
-        kind,
-        open: !state.room[`${kind}Open`],
+        roomId: room.id,
+        revision: room.revision,
+        ...change,
       });
       await refresh();
+      setEnding(false);
     } catch (e) {
       setError(e.message);
       await refresh();
@@ -525,41 +542,235 @@ function TeacherControls({ state, refresh }) {
     }
   };
   return (
-    <>
-      <section className="activities teacher-activities">
-        {Object.entries(activities).map(([kind]) => {
-          const open = state.room[`${kind}Open`];
-          return (
-            <article className={`activity ${kind}`} key={kind}>
-              <ActivityTitle kind={kind} open={open} />
-              <div className="control-bottom">
-                <span>
-                  <strong>{state.counts[kind]}</strong> 份提交
-                </span>
-                <button
-                  role="switch"
-                  aria-checked={open}
-                  aria-label={`${activities[kind].title}提交开关`}
-                  className={`switch-button ${open ? "is-on" : ""}`}
-                  disabled={busy}
-                  onClick={() => control(kind)}
-                >
-                  <span className="switch-track">
-                    <span />
-                  </span>
-                  {open ? "关闭提交" : "开放提交"}
-                </button>
-              </div>
-              <p className="control-hint">
-                {kind === "discover"
-                  ? "学校、姓名、领域、应用场景、价值"
-                  : "场景、基本功能 · 沿用第一次提交的身份信息"}
-              </p>
-            </article>
-          );
-        })}
-      </section>
+    <section className="lesson-control" aria-labelledby="lesson-control-title">
+      <div className="control-heading">
+        <div>
+          <h2 id="lesson-control-title">课堂节奏</h2>
+          <p>这里的每次切换，都会同步到学生页面。</p>
+        </div>
+        <button
+          role="switch"
+          aria-label="课堂页面开关"
+          aria-checked={room.pageOpen}
+          className={`switch-button ${room.pageOpen ? "is-on" : ""}`}
+          disabled={busy}
+          onClick={() => control({ action: "page", open: !room.pageOpen })}
+        >
+          <span className="switch-track">
+            <span />
+          </span>
+          {room.pageOpen ? "学生页面已开放" : "学生页面已关闭"}
+        </button>
+      </div>
+      <div className="stage-controls">
+        <button
+          className={`stage-choice ${room.stage === "waiting" ? "selected" : ""}`}
+          aria-pressed={room.stage === "waiting"}
+          disabled={busy || ended || room.stage === "waiting"}
+          onClick={() => control({ action: "stage", stage: "waiting" })}
+        >
+          <span className="stage-choice-icon">
+            <Monitor size={22} />
+          </span>
+          <strong>课前等候</strong>
+          <span>学生加入后等待老师开始</span>
+        </button>
+        {Object.entries(activities).map(([kind, a]) => (
+          <button
+            key={kind}
+            className={`stage-choice ${kind} ${room.stage === kind ? "selected" : ""}`}
+            aria-pressed={room.stage === kind}
+            aria-label={`切换到${a.title}`}
+            disabled={busy || ended || room.stage === kind}
+            onClick={() => control({ action: "stage", stage: kind })}
+          >
+            <span className="stage-choice-icon">
+              <a.icon size={22} />
+            </span>
+            <strong>
+              {a.number} · {a.title}
+            </strong>
+            <span>{a.subtitle}</span>
+            <small>
+              {counts[kind]} 份提交{room.stage === kind ? " · 当前主题" : ""}
+            </small>
+          </button>
+        ))}
+      </div>
+      <div className="pace-actions">
+        <span className="pace-state" role="status">
+          {ended
+            ? "本节课已结束"
+            : !room.pageOpen
+              ? "学生看到等候页，打开页面后跟随当前主题。"
+              : room.stage === "waiting"
+                ? "学生正在等候，请选择一个主题开始。"
+                : `全班正在：${activities[room.stage].title}${room.paused ? "（暂停填写）" : ""}`}
+        </span>
+        <div>
+          {active && !ended && (
+            <button
+              className="secondary"
+              disabled={busy || !room.pageOpen}
+              onClick={() => control({ action: "pause", paused: !room.paused })}
+            >
+              {room.paused ? <Play size={15} /> : <Pause size={15} />}
+              {room.paused ? "继续填写" : "暂停填写"}
+            </button>
+          )}
+          {!ended && (
+            <button
+              className="text-button end-button"
+              disabled={busy}
+              onClick={() => setEnding(true)}
+            >
+              结束本节课
+            </button>
+          )}
+        </div>
+      </div>
+      {ending && (
+        <div className="end-confirm" role="group" aria-label="结束课堂确认">
+          <p>结束后所有学生将进入结束页，不能再填写。本节记录会保留。</p>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => control({ action: "end" })}
+          >
+            确认结束课堂
+          </button>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setEnding(false)}
+          >
+            继续上课
+          </button>
+        </div>
+      )}
       <ErrorText>{error}</ErrorText>
+    </section>
+  );
+}
+function StudentClassroom({ state, refresh }) {
+  const { room, me } = state;
+  const previous = useRef({ roomId: room.id, stage: room.stage });
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    if (
+      previous.current.roomId === room.id &&
+      previous.current.stage !== room.stage
+    ) {
+      setAnnouncement(
+        activities[room.stage]
+          ? `老师已切换到“${activities[room.stage].title}”，之前未提交的草稿已保留。`
+          : "课堂状态已更新。",
+      );
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
+    previous.current = { roomId: room.id, stage: room.stage };
+  }, [room.id, room.stage]);
+  if (!room.pageOpen || room.stage === "waiting" || room.stage === "ended") {
+    const ended = room.stage === "ended",
+      closed = !room.pageOpen;
+    return (
+      <section className="classroom-curtain" aria-live="polite">
+        <div className="curtain-icon">
+          {ended ? (
+            <CircleCheck size={38} />
+          ) : closed ? (
+            <LockKeyhole size={38} />
+          ) : (
+            <Monitor size={38} />
+          )}
+        </div>
+        <span className="eyebrow">课堂 {room.code}</span>
+        <h1>
+          {ended
+            ? "本节课堂已结束"
+            : closed
+              ? "课堂页面暂未开放"
+              : "已加入课堂，准备好出发"}
+        </h1>
+        <p>
+          {ended
+            ? "谢谢你的参与，已提交的作品都已保存。"
+            : closed
+              ? "请留在这里，老师开放页面后会自动更新。"
+              : "请等待老师开启主题，页面会自动跟随老师切换。"}
+        </p>
+        {ended && (
+          <span className="pill">
+            你已完成 {Object.keys(state.submissions).length} 个主题
+          </span>
+        )}
+        {me.name && (
+          <p className="curtain-identity">
+            {me.school} · {me.name}
+          </p>
+        )}
+      </section>
+    );
+  }
+  const kind = room.stage,
+    submitted = !!state.submissions[kind];
+  return (
+    <>
+      <div className="student-stage-heading">
+        <div>
+          <span className="eyebrow">课堂 {room.code} · 跟随老师的节奏</span>
+          <h1>{activities[kind].subtitle}</h1>
+        </div>
+        <ol className="student-progress" aria-label="课堂主题进度">
+          {Object.entries(activities).map(([key, a]) => (
+            <li
+              key={key}
+              aria-current={kind === key ? "step" : undefined}
+              className={kind === key ? "current" : ""}
+            >
+              <span>{a.number}</span>
+              {a.title}
+            </li>
+          ))}
+        </ol>
+      </div>
+      <p className="sync-notice" role="status">
+        {announcement || "老师切换主题时，你的页面会自动进入相应活动。"}
+      </p>
+      {room.paused && (
+        <p className="pause-notice" role="status">
+          <Pause size={16} />
+          老师暂停了填写，先听一听大家的想法。已解锁的分享仍可阅读。
+        </p>
+      )}
+      <div className="student-split" key={`${room.id}:${me.id}:${kind}`}>
+        <StudentActivity kind={kind} state={state} refresh={refresh} />
+        {submitted ? (
+          <Board state={state} role="student" fixedKind={kind} />
+        ) : (
+          <section
+            className="locked-sharing"
+            aria-labelledby="locked-sharing-title"
+          >
+            <div className="sharing-heading">
+              <Users size={21} />
+              <h2 id="locked-sharing-title">同学的分享</h2>
+            </div>
+            <div className="locked-sharing-body">
+              <span className="lock-orbit">
+                <LockKeyhole size={34} />
+              </span>
+              <h3>先写下你的想法</h3>
+              <p>
+                完成并提交本主题后，
+                <br />
+                这里会自动出现同学们的回答。
+              </p>
+              <span className="privacy-label">独立思考，再一起交流</span>
+            </div>
+          </section>
+        )}
+      </div>
     </>
   );
 }
@@ -633,15 +844,25 @@ function Share({ room }) {
     </aside>
   );
 }
-function Board({ state, role }) {
-  const [kind, setKind] = useState("discover"),
-    [query, setQuery] = useState("");
-  const [filter, setFilter] = useState(""),
+function Board({ state, role, fixedKind }) {
+  const student = role === "student";
+  const [selected, setSelected] = useState(
+    activities[state.room.stage] ? state.room.stage : "discover",
+  );
+  const kind = fixedKind || selected;
+  const [query, setQuery] = useState(""),
+    [filter, setFilter] = useState(""),
     [page, setPage] = useState(1);
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const refresh = useRef();
+  useEffect(() => {
+    if (!student && activities[state.room.stage]) {
+      setSelected(state.room.stage);
+      setPage(1);
+    }
+  }, [state.room.stage, student]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setFilter(query.trim());
@@ -663,7 +884,10 @@ function Board({ state, role }) {
           setError("");
         }
       } catch (e) {
-        if (active) setError(e.message);
+        if (active) {
+          setData(null);
+          setError(e.message);
+        }
       } finally {
         if (active) setBusy(false);
       }
@@ -678,46 +902,55 @@ function Board({ state, role }) {
   useEffect(() => {
     refresh.current?.();
   }, [state]);
-  const total = state.counts.discover + state.counts.design;
   return (
-    <section className="board" aria-labelledby="board-title">
+    <section
+      className={`board ${student ? "forum-board" : ""}`}
+      aria-labelledby="board-title"
+    >
       <div className="section-heading">
         <div>
-          <span className="eyebrow">OUR IDEAS, TOGETHER</span>
+          <span className="eyebrow">
+            {student
+              ? "THINK FIRST, SHARE TOGETHER"
+              : "ALL CLASSROOM RESPONSES"}
+          </span>
           <h2 id="board-title">
-            让每一个想法被看见<span className="total-badge">{total}</span>
+            {student ? "同学的分享" : "全班提交记录"}
+            <span className="total-badge">{state.counts[kind]}</span>
           </h2>
-          <p>提交后自动更新，全班共享。最新的想法排在最前面。</p>
+          <p>
+            {student
+              ? "你已完成本主题，现在可以看看大家的想法。"
+              : "老师可查看所有主题的记录，不受学生提交限制。"}
+          </p>
         </div>
-        <span className="board-live">
-          <span />
-          课堂共享列表
-        </span>
       </div>
       <div className="board-toolbar">
-        <div className="tabs" role="tablist" aria-label="查看哪个环节的提交">
-          {Object.entries(activities).map(([key, a]) => (
-            <button
-              key={key}
-              id={`tab-${key}`}
-              role="tab"
-              aria-selected={kind === key}
-              aria-controls="board-panel"
-              className={kind === key ? "active" : ""}
-              onClick={() => {
-                setKind(key);
-                setPage(1);
-              }}
-            >
-              {a.title}
-              <span>{state.counts[key]}</span>
-            </button>
-          ))}
-        </div>
+        {!student && (
+          <div className="tabs" role="tablist" aria-label="查看哪个主题的提交">
+            {Object.entries(activities).map(([key, a]) => (
+              <button
+                key={key}
+                id={`tab-${key}`}
+                role="tab"
+                aria-selected={kind === key}
+                aria-controls="board-panel"
+                className={kind === key ? "active" : ""}
+                onClick={() => {
+                  setSelected(key);
+                  setPage(1);
+                }}
+              >
+                {a.title}
+                <span>{state.counts[key]}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <label className="search-input">
           <Search size={17} />
           <input
-            aria-label="搜索共享列表"
+            aria-label="搜索同学分享"
             placeholder="搜索姓名、学校或内容"
             maxLength={80}
             value={query}
@@ -728,67 +961,107 @@ function Board({ state, role }) {
       <ErrorText>{error}</ErrorText>
       <div
         id="board-panel"
-        role="tabpanel"
-        aria-labelledby={`tab-${kind}`}
+        role={student ? "region" : "tabpanel"}
+        aria-label={student ? "当前主题的同学分享" : undefined}
+        aria-labelledby={student ? undefined : `tab-${kind}`}
         aria-busy={busy}
       >
-        <div
-          className="table-scroll"
-          tabIndex="0"
-          role="region"
-          aria-label={`${activities[kind].title}共享列表，可左右滚动`}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th className="index-column">序号</th>
-                <th className="person-column">姓名</th>
-                <th className="school-column">学校</th>
-                {kind === "discover" && <th className="field-column">领域</th>}
-                <th>{kind === "discover" ? "应用场景" : "场景"}</th>
-                <th>{kind === "discover" ? "价值" : "基本功能"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.rows.map((row, index) => (
-                <tr
-                  key={row.id}
-                  className={row.participantId === state.me?.id ? "my-row" : ""}
-                >
-                  <td className="row-index">
-                    {data.total - ((data.page - 1) * 50 + index)}
-                  </td>
-                  <td className="person-cell">
-                    {row.name}
-                    {row.participantId === state.me?.id && <small>我</small>}
-                  </td>
-                  <td>{row.school}</td>
+        {student ? (
+          <div className="forum-rows">
+            {data?.rows.map((row) => (
+              <article
+                className={`forum-row ${row.participantId === state.me.id ? "my-post" : ""}`}
+                key={row.id}
+                aria-label={`${row.name}的分享`}
+              >
+                <header>
+                  <span className="student-avatar" aria-hidden="true">
+                    {row.name.slice(0, 1)}
+                  </span>
+                  <div>
+                    <strong>{row.name}</strong>
+                    {row.participantId === state.me.id && (
+                      <span className="own-post">我</span>
+                    )}
+                    <p>{row.school}</p>
+                  </div>
+                  <time dateTime={new Date(row.createdAt).toISOString()}>
+                    {new Date(row.createdAt).toLocaleTimeString("zh-CN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "Asia/Shanghai",
+                    })}
+                  </time>
+                </header>
+                {kind === "discover" && (
+                  <span className="field-chip">{row.field}</span>
+                )}
+                <dl>
+                  <dt>{kind === "discover" ? "应用场景" : "场景"}</dt>
+                  <dd>{row.scenario}</dd>
+                  <dt>{kind === "discover" ? "价值" : "基本功能"}</dt>
+                  <dd>{kind === "discover" ? row.value : row.function}</dd>
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div
+            className="table-scroll"
+            tabIndex="0"
+            role="region"
+            aria-label={`${activities[kind].title}提交列表，可左右滚动`}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th className="index-column">序号</th>
+                  <th className="person-column">姓名</th>
+                  <th className="school-column">学校</th>
                   {kind === "discover" && (
-                    <td>
-                      <span className="field-chip">{row.field}</span>
-                    </td>
+                    <th className="field-column">领域</th>
                   )}
-                  <td>{row.scenario}</td>
-                  <td>{kind === "discover" ? row.value : row.function}</td>
+                  <th>{kind === "discover" ? "应用场景" : "场景"}</th>
+                  <th>{kind === "discover" ? "价值" : "基本功能"}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data?.rows.map((row, index) => (
+                  <tr key={row.id}>
+                    <td className="row-index">
+                      {data.total - ((data.page - 1) * 50 + index)}
+                    </td>
+                    <td className="person-cell">{row.name}</td>
+                    <td>{row.school}</td>
+                    {kind === "discover" && (
+                      <td>
+                        <span className="field-chip">{row.field}</span>
+                      </td>
+                    )}
+                    <td>{row.scenario}</td>
+                    <td>{kind === "discover" ? row.value : row.function}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {(!data || !data.rows.length) && (
           <div className="empty-board">
             <Users size={29} />
             <strong>
               {busy
                 ? "正在读取课堂想法…"
-                : filter
-                  ? "没有找到匹配的内容"
-                  : "这里，等着大家的第一个想法"}
+                : error
+                  ? "分享暂时不可用"
+                  : filter
+                    ? "没有找到匹配的内容"
+                    : "期待大家的第一个想法"}
             </strong>
             <p>
               {filter
                 ? "试试其他姓名、学校或关键词。"
-                : "完成上方活动并提交，作品就会一行一行地出现在这里。"}
+                : "提交的作品会在这里自动更新。"}
             </p>
           </div>
         )}
@@ -796,9 +1069,9 @@ function Board({ state, role }) {
       <div className="board-footer">
         <span aria-live="polite">
           {data
-            ? `共 ${data.total} 份${filter ? "匹配的" : ""}提交`
+            ? `共 ${data.total} 份${filter ? "匹配的" : ""}分享`
             : "正在读取"}{" "}
-          · 每页最多 50 行
+          · 每页最多 50 份
         </span>
         {data && data.pages > 1 && (
           <div className="pagination">
@@ -861,7 +1134,7 @@ function ClassroomTools({ state, refresh }) {
             <button
               className="primary"
               disabled={
-                busy || state.room.discoverOpen || state.room.designOpen
+                busy || (state.room.pageOpen && state.room.stage !== "ended")
               }
               onClick={reset}
             >
@@ -870,8 +1143,8 @@ function ClassroomTools({ state, refresh }) {
             <button className="text-button" onClick={() => setConfirm(false)}>
               取消
             </button>
-            {(state.room.discoverOpen || state.room.designOpen) && (
-              <p>请先关闭两个环节。</p>
+            {state.room.pageOpen && state.room.stage !== "ended" && (
+              <p>请先结束课堂或关闭课堂页面。</p>
             )}
           </div>
         )}
@@ -911,74 +1184,54 @@ export default function App() {
           <ErrorText>{error}</ErrorText>
         </>
       ) : (
-        <main className="workspace">
+        <main
+          className={`workspace ${teacher ? "teacher-workspace" : "student-workspace"}`}
+        >
           <ErrorText>{error || logoutError}</ErrorText>
-          <section
-            className={`classroom-intro ${teacher ? "teacher-intro" : ""}`}
-          >
-            <div>
-              <span className="eyebrow">
-                {teacher
-                  ? "TEACHER WORKSPACE · 教师工作台"
-                  : `AI EXPLORATION LAB · 课堂 ${state.room.code}`}
-              </span>
-              <h1>
-                {teacher ? (
-                  <>
-                    一堂课，<span>两次共创。</span>
-                  </>
-                ) : (
-                  <>
-                    从身边的发现，<span>走向未来的设计。</span>
-                  </>
-                )}
-              </h1>
-              <p>
-                {teacher
-                  ? "按课堂节奏开放两个环节，和同学们一起看见想法的生长。"
-                  : "先记录你发现的 AI 应用，再设计你期待的未来。"}
-              </p>
-              <div className="classroom-stats">
-                <span>
-                  <Users size={16} />
-                  <strong>{state.counts.joined}</strong> 人已加入
-                </span>
-                <span>
-                  <strong>{state.counts.discover}</strong> 次发现
-                </span>
-                <span>
-                  <strong>{state.counts.design}</strong> 个设计
-                </span>
-              </div>
-            </div>
-            {teacher && <Share room={state.room} />}
-          </section>
-          {teacher && state.schools.includes("待补充学校") && (
-            <p className="school-notice">
-              学校名单待补充，当前下拉选项为“待补充学校”。
-            </p>
-          )}
           {teacher ? (
-            <TeacherControls state={state} refresh={refresh} />
+            <>
+              <section className="classroom-intro teacher-intro">
+                <div>
+                  <span className="eyebrow">
+                    TEACHER WORKSPACE · 教师工作台
+                  </span>
+                  <h1>
+                    老师推进，<span>全班同屏。</span>
+                  </h1>
+                  <p>
+                    选择当前主题，学生自动进入同一页面；先独立作答，再一起分享。
+                  </p>
+                  <div className="classroom-stats">
+                    <span>
+                      <Users size={16} />
+                      <strong>{state.counts.joined}</strong> 人已加入
+                    </span>
+                    <span>
+                      <strong>{state.counts.discover}</strong> 次发现
+                    </span>
+                    <span>
+                      <strong>{state.counts.design}</strong> 个设计
+                    </span>
+                  </div>
+                </div>
+                <Share room={state.room} />
+              </section>
+              <TeacherControls state={state} refresh={refresh} />
+              <Board state={state} role="teacher" />
+              <ClassroomTools state={state} refresh={refresh} />
+            </>
           ) : (
-            <section className="activities">
-              {["discover", "design"].map((kind) => (
-                <StudentActivity
-                  key={`${state.room.id}:${state.me.id}:${kind}`}
-                  kind={kind}
-                  state={state}
-                  refresh={refresh}
-                />
-              ))}
-            </section>
+            <StudentClassroom
+              key={state.room.id}
+              state={state}
+              refresh={refresh}
+            />
           )}
-          <Board state={state} role={role} />
-          {teacher && <ClassroomTools state={state} refresh={refresh} />}
         </main>
       )}
       <footer className="site-footer">
         <span>AI 共创课堂</span>
-        <span>好奇心，让未来从这里发生。</span>
+        <span>先独立思考，再分享发现。</span>
       </footer>
     </>
   );

@@ -1,54 +1,58 @@
-# Validation record
+# Validation report
 
 [中文](TEST_REPORT.md) · [Back to README](README.en.md)
 
-Validated on 2026-09-22 using local macOS, Node.js 24.14.1, and Chromium. All participants, names, and submissions are isolated test fixtures. No original project classroom database was read or migrated.
+Validation date: 2026-09-22, version 0.2.0. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
 
 ## Automated checks
 
-`npm run check` passed: 14 tests passed, 0 failed, and the production build succeeded. `npm audit --omit=dev` reported 0 known vulnerabilities.
+`npm run check` passed: 21 tests passed, 0 failed, and the production build succeeded. Production dependencies are unchanged. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
 
-Coverage includes teacher authorization, same-origin writes, classroom codes, submission ordering, independent switches, school validation, required fields and lengths, concurrent deduplication, CSV export, logout, restart recovery, new-classroom isolation, and real HTTP SSE notifications.
+Coverage includes teacher authorization, same-origin writes, classroom codes, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
 
-The concurrency case simulated 150 participants sharing one outgoing address through local Fastify injection, completing 300 valid submissions. All records were readable through pagination. This is not a capacity limit verified on the target school network.
+Before submission, direct peer list, search, and pagination requests are denied. Submitting one topic does not unlock another. Student state contains only personal work and aggregate counts; teachers can still read all records.
 
-## School list update
+A local Fastify injection test simulates 150 participants sharing an outbound address, completing 300 valid submissions as the teacher progresses. Pagination retrieves all records. This is not a target school-network capacity limit.
 
-On 2026-09-22, the placeholder list was replaced with six schools, preserving the user's exact names and order. `npm run check` passed again, including all 14 tests and the production build. A separate isolated database check verified that the join endpoint returns all six schools, each school can submit successfully, and the former placeholder is rejected by the server. API tests read the configured school and the browser script selects an actual dropdown option instead of depending on a placeholder name.
+## School list and upgrade
 
-The complete browser workflow was not rerun for this list-only update. The next section retains the initial browser acceptance record.
+The six schools preserve the user's exact names and order; see the README. Earlier isolated checks confirmed that all six can submit and the old placeholder is rejected. This update continues to test server-side school validation.
+
+The migration test starts from the old schema and retains the classroom, identity, and submitted work, verifying that two open legacy switches select design. The existing local preview was also stopped, backed up, upgraded, and restarted, retaining its classroom code and two demonstration responses.
 
 ## Browser workflow
 
-One teacher page and two isolated student browser contexts verified:
+One teacher page and two isolated student browser contexts completed `test/browser/flow.js`, verifying:
 
-1. Students can join while both activities are closed but cannot submit. Opening an activity automatically enables the appropriate form.
-2. The first submission collects school, name, field, scenario, and value. Reloading preserves the unfinished draft.
-3. The other student and teacher see the first submission appear as a table row without manually refreshing.
-4. Closing discovery disables the unfinished student's form. Opening design still requires that student to complete discovery first.
-5. The second submission reuses the name and school, and peers can switch to the design table to view it.
-6. Both students complete both submissions. Closing both activities retains shared rows, and reloading restores submitted records.
-7. Name search filters the table correctly. Desktop width 1366 pixels and mobile width 390 pixels were checked. The mobile page does not overflow horizontally; the wide table scrolls within its own container.
+1. Students can join a closed page and wait. Opening the master switch shows the waiting stage; selecting discovery automatically displays both student forms without reloads.
+2. Unsubmitted students only see a lock notice. They still cannot see peer work after another participant submits. The submitter sees a forum-style list on the right.
+3. Pausing disables unsubmitted forms and shows all students a pause notice, while unlocked responses remain readable. Resuming permits writing again.
+4. Selecting design automatically moves both students to the second page, including the student who did not submit discovery. That student can submit design directly, retaining the school/name draft.
+5. Discovery and design unlock independently. After both students submit the same topic they can read each other, and new responses appear automatically.
+6. Returning to discovery restores unsent drafts, including after a reload. A student who submitted design first reuses the saved identity in discovery, but must submit discovery to unlock its responses.
+7. Reloads restore submitted records. Name search filters correctly, and clearing the search restores all rows.
+8. Closing the master switch hides forms and peer responses; reopening restores the current topic. Ending shows the closing screen to both students while teachers retain records.
+9. A 1366 × 768 computer viewport and a 1024 × 768 landscape tablet retain the split layout. A 1920 × 1080 display has no page overflow. Computer-room desktops are the primary target; narrow phones are not receiving dedicated adaptation.
 
-The final browser workflow produced no script exceptions or console errors. Teacher desktop, student desktop, and student mobile screenshots were visually inspected. Local screenshots are in `output/playwright/` and are excluded from Git. Early expected unauthenticated 401 requests were replaced with an empty-session response to avoid unnecessary entry-page network errors.
+The full script passed without page exceptions or console errors. Teacher desktop, student desktop, and tablet screenshots were inspected. Local screenshots and script output are under `output/playwright/` and excluded from Git. The in-app browser also verified topic switching, sharing gates, pause, page closure, and lesson ending.
 
 ## Reproduction
 
-Run `npm ci` and `npm run build` first, and ensure port 3218 is free. Run the browser script only against the isolated QA server: it starts a new classroom and submits demonstration records.
+Run `npm ci` and `npm run build` first, and ensure port 3219 is free. Run the browser script only against the isolated QA server: it starts a new classroom and submits demonstration records. Port 3218 remains available for the regular preview.
 
 ```bash
 node scripts/qa-server.js
 ```
 
-Use Playwright CLI in a separate terminal:
+In another terminal, use Playwright CLI:
 
 ```bash
-npx --yes --package @playwright/cli playwright-cli -s=workshop-check open http://127.0.0.1:3218/teacher --headed
+npx --yes --package @playwright/cli playwright-cli -s=workshop-check open http://127.0.0.1:3219/teacher --headed
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/flow.js
 ```
 
-The QA server uses an isolated `output/qa-*` directory and an explicitly test-only password. Do not use it for real classrooms. See [README.en.md](README.en.md) for normal operation.
+The QA service uses an isolated `output/qa-*` data directory and an explicit test-only password. Do not use it for an actual classroom. See the [README](README.en.md) for normal operation.
 
 ## Unverified scope
 
-No school server deployment, actual classroom capacity or duration acceptance, wireless network validation, external reverse proxy validation, or physical mobile-device test was performed. The mobile check used a Chromium viewport simulation. Docker and Nginx files are examples, not runtime-verified deployments. The six school names are configured exactly as supplied by the user; their official naming conventions were not independently checked. There are no external model calls or model-quality acceptance results.
+No school server deployment, actual classroom capacity or duration acceptance, wireless network validation, external reverse proxy validation, or physical tablet/display test was performed. Size checks use Chromium viewport simulation. Docker and Nginx files are examples, not runtime-verified deployments. Official school naming conventions were not independently checked. There are no external model calls or model-quality acceptance results.

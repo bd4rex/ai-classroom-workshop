@@ -2,24 +2,25 @@
 
 [中文](README.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
-One teacher, one classroom, two fixed activities. The teacher opens or closes submissions for each activity independently. Students join with a classroom code, submit twice, and view each other's work in shared table rows.
+One teacher, one classroom, two fixed topics. The teacher controls page access and lesson progression. Students join with a classroom code and automatically follow the current topic. They write independently, then unlock that topic’s peer responses on the right after submitting.
 
 This is an independent simplification of [Tongpin Classroom Feedback](https://github.com/bd4rex/tongpin-classroom-feedback), with a separate repository and data directory. It retains the React, Fastify, SQLite, and SSE approach and a fixed workflow. There is no general question bank, activity editor, model configuration, or AI invocation.
 
 ## Classroom workflow
 
-| Activity                                     | Student input                                                              | Teacher control                  |
-| -------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |
-| Discover together: AI applications around us | School dropdown, name, field, application scenario, value                  | Open/close the first submission  |
-| Design together: future AI applications      | Scenario and basic functions; reuse the first submission's school and name | Open/close the second submission |
+| Activity                                     | Student input                                                                                                    | Teacher control                           |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Discover together: AI applications around us | School dropdown, name, field, application scenario, value                                                        | Switch to discovery; pause/resume writing |
+| Design together: future AI applications      | Scenario and basic functions; collect school/name on the first actual submission, otherwise reuse saved identity | Switch to design; pause/resume writing    |
 
-- The switches are independent. Teachers can close discovery before opening design, or open both together.
-- Students complete the first submission before the second. A student who missed the first step needs the teacher to reopen discovery.
-- Each participant submits once per activity. Retrying the same request does not create duplicates; submitted work cannot be edited.
-- The two shared tables display name, school, and work, newest first. They support search and pagination at 50 rows per page, rather than a card wall.
-- Closing an activity only stops new submissions; existing work remains visible. Updates and reconnects refresh automatically, with an additional polling fallback approximately every 6–7.5 seconds.
-- Drafts remain in the current browser tab. Submitted work persists in the database and survives page reloads and service restarts.
-- Teacher classroom tools provide CSV export and a new-classroom action. Both activities must be closed before starting a new classroom, which rotates the code and requires students to rejoin. Older records remain in the database; the interface only views and exports the current classroom, so export before switching.
+- The master page switch controls whether students see the activity. Closing it shows a waiting screen; reopening follows the current topic. Only one of waiting, discovery, or design appears at a time.
+- Switching to design automatically moves all students to the second page, including students who have not submitted discovery. Teachers can return to a previous topic; students cannot navigate topics themselves.
+- Each topic independently requires submission before peer reading. Before submission, a lock notice appears and the server rejects list, search, and pagination requests. Submitting discovery does not unlock design responses.
+- Computer-room desktops are the primary target, with landscape tablets and classroom displays also considered. Narrow phones are not a dedicated adaptation target. The student's form or saved work appears on the left and a forum-style row list on the right shows names, schools, times, and responses. Newest responses appear first, with search and 50 items per page. Teachers can always view all records for both topics.
+- Pausing stops writing while retaining already unlocked responses. Closing the page or ending the lesson hides student forms and peer responses. Ending shows a closing screen; teachers retain access to records and export.
+- Each participant submits once per topic; identical retries do not duplicate records, and submitted work cannot be edited. Drafts stay in the current browser tab across topic switches and reloads. Submitted records persist in the database.
+- Students do not need to refresh manually. Live events and reconnects fetch current state, with a polling fallback approximately every 6–7.5 seconds. Instant synchronization is unavailable while disconnected.
+- Teacher classroom tools provide CSV export and a new-classroom action. End the lesson or close the page first; a new classroom rotates the code and requires students to rejoin. Older records remain in the database, but the interface only views and exports the current classroom, so export before switching.
 
 ## Run locally
 
@@ -33,7 +34,7 @@ npm start
 
 Student entry: <http://localhost:3218/>; teacher entry: <http://localhost:3218/teacher>.
 
-The first startup prints a random teacher password in the server terminal. Save it. Students only need the classroom code, with no account registration. Both activities are initially closed. To recover a forgotten teacher password, stop the service first, then run:
+The first startup prints a random teacher password in the server terminal. Save it. Students only need the classroom code, with no account registration. New classrooms start with the student page closed and the waiting stage selected. To recover a forgotten teacher password, stop the service first, then run:
 
 ```bash
 npm run password:reset
@@ -80,9 +81,10 @@ Docker stores data in the `classroom-data` named volume and mounts the host's `c
 
 ## Data and operating boundaries
 
-- Names, schools, and both submissions are **visible to students who have joined the current classroom**. The join page explains this. Unjoined visitors cannot read the tables; teacher actions require a password.
+- Names, schools, and responses are **visible to current-classroom students who have submitted the same topic**, and only while that topic is the open current topic. The join page explains this. Unjoined or unsubmitted visitors cannot read peer responses; teacher actions require a password.
 - Student identity uses the current browser cookie. Clearing cookies, changing browser, or changing device creates a new participant. There is no identity verification or cross-device deduplication.
 - Data defaults to `data/classroom.sqlite`, using SQLite WAL. Stop the service before backing up all of `data/`; do not copy only the live database file. Runtime data, passwords, environment files, dependencies, and screenshots are excluded from Git.
+- Upgrading from 0.1 adds lesson-state fields while preserving classrooms, identities, and responses. If both old switches were open, the selected topic becomes design; discovery-only becomes discovery; both closed becomes waiting. Stop the service and back up its data directory before upgrading.
 - Run one service process, not multiple instances sharing this database. SSE notifications are coalesced and lists are paginated to bound response size. Actual classroom capacity needs testing on the target devices and network.
 - No external AI service or model key is used. Discussing AI in this application incurs no model invocation charges.
 
@@ -93,14 +95,14 @@ npm run check
 npm audit --omit=dev
 ```
 
-Tests use isolated temporary databases and cover authorization, both submissions, independent switches, concurrent deduplication, 150 participants making 300 submissions, pagination, restart recovery, new-classroom isolation, and real HTTP SSE. See [TEST_REPORT.en.md](TEST_REPORT.en.md) for the verified scope.
+Tests use isolated temporary databases and cover authorization, topic synchronization, direct design without discovery, per-topic sharing gates, the master switch, pause/end controls, stale control rejection, legacy migration, concurrent deduplication, 150 participants making 300 submissions, restart recovery, new-classroom isolation, and real HTTP SSE. See [TEST_REPORT.en.md](TEST_REPORT.en.md) for the verified scope.
 
-| File                               | Purpose                                                          |
-| ---------------------------------- | ---------------------------------------------------------------- |
-| `src/App.jsx`, `src/styles.css`    | Teacher entry, fixed forms, shared row tables, and mobile layout |
-| `server/app.js`, `server/store.js` | Authorization, switches, validation, SQLite, SSE, and export     |
-| `server/auth.js`                   | Asynchronous password derivation and verification                |
-| `config/schools.json`              | School dropdown list, currently configured with six schools      |
-| `test/`                            | Automated regression tests                                       |
+| File                               | Purpose                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `src/App.jsx`, `src/styles.css`    | Teacher progression, current-topic forms, gated sharing, split layout     |
+| `server/app.js`, `server/store.js` | Authorization, lesson state, sharing gates, SQLite migration, SSE, export |
+| `server/auth.js`                   | Asynchronous password derivation and verification                         |
+| `config/schools.json`              | School dropdown list, currently configured with six schools               |
+| `test/`                            | Automated regression tests                                                |
 
 Source baseline: `tongpin-classroom-feedback` at `f597af64b2ac199ba69dd6eb301ba5317027c64a`. This repository starts from an independent initial commit and does not copy the original runtime data or Git history.
