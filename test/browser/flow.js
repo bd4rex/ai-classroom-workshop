@@ -82,7 +82,7 @@ async (page) => {
     await discoverSwitch.click();
     await a
       .getByRole("combobox", { name: "学校 必填", exact: true })
-      .selectOption("待补充学校");
+      .selectOption({ index: 1 });
     await a
       .getByRole("textbox", { name: "姓名 必填", exact: true })
       .fill("小禾（演示）");
@@ -148,7 +148,7 @@ async (page) => {
     await discoverSwitch.click();
     await b
       .getByRole("combobox", { name: "学校 必填", exact: true })
-      .selectOption("待补充学校");
+      .selectOption({ index: 1 });
     await b
       .getByRole("textbox", { name: "姓名 必填", exact: true })
       .fill("小宇（演示）");

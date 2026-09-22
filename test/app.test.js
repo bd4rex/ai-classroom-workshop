@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildApp } from "../server/app.js";
 
 const password = "isolated-test-password-only";
-const school = "待补充学校";
+const school = JSON.parse(
+  readFileSync(new URL("../config/schools.json", import.meta.url), "utf8"),
+)[0];
 const discovery = (name = "测试同学") => ({
   school,
   name,

@@ -44,10 +44,17 @@ This prints a new random password and invalidates existing teacher sessions with
 
 ## School dropdown
 
-The final school list is not available yet. `config/schools.json` contains only **“待补充学校”** (“School list pending”), an explicit placeholder rather than a real school. Replace it with an array of school names and restart:
+`config/schools.json` contains the following six schools, preserving the names and order provided by the user. To update the dropdown later, edit this array and restart the service:
 
 ```json
-["学校全称一", "学校全称二"]
+[
+  "南京浦口区石桥中学",
+  "南京市溧水区东庐初级中学",
+  "无锡宜兴市丰义中学",
+  "南通通州区兴仁中学",
+  "南通通州区新坝初级中学",
+  "南通海安市墩头镇吉庆初级中学"
+]
 ```
 
 Supports 1–500 schools, with up to 100 characters per name. Students must choose a listed school and the server validates the selection. Submitted records retain their original school name. `SCHOOLS_FILE` can point to another JSON file.
@@ -93,7 +100,7 @@ Tests use isolated temporary databases and cover authorization, both submissions
 | `src/App.jsx`, `src/styles.css`    | Teacher entry, fixed forms, shared row tables, and mobile layout |
 | `server/app.js`, `server/store.js` | Authorization, switches, validation, SQLite, SSE, and export     |
 | `server/auth.js`                   | Asynchronous password derivation and verification                |
-| `config/schools.json`              | School list to be completed later                                |
+| `config/schools.json`              | School dropdown list, currently configured with six schools      |
 | `test/`                            | Automated regression tests                                       |
 
 Source baseline: `tongpin-classroom-feedback` at `f597af64b2ac199ba69dd6eb301ba5317027c64a`. This repository starts from an independent initial commit and does not copy the original runtime data or Git history.

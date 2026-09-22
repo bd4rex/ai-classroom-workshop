@@ -12,6 +12,12 @@ Coverage includes teacher authorization, same-origin writes, classroom codes, su
 
 The concurrency case simulated 150 participants sharing one outgoing address through local Fastify injection, completing 300 valid submissions. All records were readable through pagination. This is not a capacity limit verified on the target school network.
 
+## School list update
+
+On 2026-09-22, the placeholder list was replaced with six schools, preserving the user's exact names and order. `npm run check` passed again, including all 14 tests and the production build. A separate isolated database check verified that the join endpoint returns all six schools, each school can submit successfully, and the former placeholder is rejected by the server. API tests read the configured school and the browser script selects an actual dropdown option instead of depending on a placeholder name.
+
+The complete browser workflow was not rerun for this list-only update. The next section retains the initial browser acceptance record.
+
 ## Browser workflow
 
 One teacher page and two isolated student browser contexts verified:
@@ -45,4 +51,4 @@ The QA server uses an isolated `output/qa-*` directory and an explicitly test-on
 
 ## Unverified scope
 
-No school server deployment, actual classroom capacity or duration acceptance, wireless network validation, external reverse proxy validation, or physical mobile-device test was performed. The mobile check used a Chromium viewport simulation. Docker and Nginx files are examples, not runtime-verified deployments. The school list still contains “School list pending.” There are no external model calls or model-quality acceptance results.
+No school server deployment, actual classroom capacity or duration acceptance, wireless network validation, external reverse proxy validation, or physical mobile-device test was performed. The mobile check used a Chromium viewport simulation. Docker and Nginx files are examples, not runtime-verified deployments. The six school names are configured exactly as supplied by the user; their official naming conventions were not independently checked. There are no external model calls or model-quality acceptance results.
