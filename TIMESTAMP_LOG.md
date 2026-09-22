@@ -14,4 +14,9 @@
 
 ## GitHub 发布
 
-待本地初始提交和远端回读完成后追加事实记录。
+- 2026-09-22 13:19（Asia/Shanghai）：新建并回读确认私有仓库 [bd4rex/ai-classroom-workshop](https://github.com/bd4rex/ai-classroom-workshop)，默认分支 `main`。
+- 初始实现提交：`a267ecefd9d5b02170df47e58f64c4ef9a110782`，共 32 个文件；已推送。
+- 发布回读：本地 `HEAD` 与 `git ls-remote origin refs/heads/main` 均为上述提交，发布时工作区干净。
+- 复查原项目：仍在 `f597af64b2ac199ba69dd6eb301ba5317027c64a`，工作区干净。
+- 已停止隔离浏览器测试服务；正式运行请按 README 启动。发布到 GitHub 不代表学校服务器已部署。
+- 本条日志作为后续文档提交保留；之后的当前版本以 `git log -1` 与远端 `main` 为准。

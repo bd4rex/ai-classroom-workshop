@@ -14,4 +14,9 @@
 
 ## GitHub publication
 
-Publication facts will be appended after the initial local commit and remote read-back.
+- 2026-09-22 13:19 (Asia/Shanghai): created and read back the private repository [bd4rex/ai-classroom-workshop](https://github.com/bd4rex/ai-classroom-workshop), with default branch `main`.
+- Initial implementation commit: `a267ecefd9d5b02170df47e58f64c4ef9a110782`, containing 32 files; pushed successfully.
+- Publication read-back: local `HEAD` and `git ls-remote origin refs/heads/main` both matched that commit, with a clean working tree at publication.
+- Original project recheck: still at `f597af64b2ac199ba69dd6eb301ba5317027c64a`, with a clean working tree.
+- The isolated browser test service has been stopped. Follow the README for normal operation. GitHub publication does not mean deployment to a school server.
+- This entry is retained in a follow-up documentation commit. Use `git log -1` and remote `main` for the subsequent current version.
