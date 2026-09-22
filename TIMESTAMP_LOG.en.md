@@ -20,3 +20,11 @@
 - Original project recheck: still at `f597af64b2ac199ba69dd6eb301ba5317027c64a`, with a clean working tree.
 - The isolated browser test service has been stopped. Follow the README for normal operation. GitHub publication does not mean deployment to a school server.
 - This entry is retained in a follow-up documentation commit. Use `git log -1` and remote `main` for the subsequent current version.
+
+## 2026-09-22 13:37 · Six-school list published
+
+- Configured six schools in `config/schools.json`, preserving the user's exact names and order, and removed the placeholder. Both READMEs contain the full list.
+- API tests and the browser script use actual configured options rather than depending on the placeholder name.
+- `npm run check` passed: 14 tests and the production build. An isolated API check confirmed that all six schools can submit and the old placeholder is rejected. The complete browser workflow was not rerun for this update.
+- Repository: `bd4rex/ai-classroom-workshop`; branch: `main`; school-list commit: `5160970a52373a47ac69a74c52ca63a3578be352`. Pushed and verified that local `HEAD` matched remote `main`.
+- The pending school-list item is complete. No server deployment was performed; any existing instance needs to pull the update and restart to load the new list.
