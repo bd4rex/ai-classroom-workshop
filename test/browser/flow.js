@@ -34,6 +34,12 @@ async (page) => {
     return link?.startsWith("http") && link !== old;
   }, oldLink);
   const link = await page.getByRole("textbox", { name: "学生加入链接" }).inputValue();
+  check(link.startsWith(base + "/classroom/") && !link.includes("?"), "没有使用固定课堂路径");
+  check(await page.getByRole("textbox", { name: "课堂码", exact: true }).count() === 0, "教师页仍显示课堂码");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await button(page, "复制学生端链接").click();
+  await button(page, "链接已复制").waitFor();
+  check(await page.evaluate(() => navigator.clipboard.readText()) === link, "复制的链接不正确");
   const browser = page.context().browser();
   const ca = await browser.newContext({ viewport: { width: 1366, height: 768 } });
   const cb = await browser.newContext({ viewport: { width: 1024, height: 768 } });
@@ -41,9 +47,11 @@ async (page) => {
   watch(a); watch(b);
   try {
     for (const p of [a, b]) {
-      await p.goto(link);
-      await button(p, "加入课堂").click();
+      await p.goto(p === a ? base + "/" : link);
       await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
+      check(p.url() === link, "学生没有停留在课堂固定链接");
+      check(await p.getByRole("textbox", { name: "课堂码", exact: true }).count() === 0, "学生仍需填写课堂码");
+      check(await button(p, "加入课堂").count() === 0, "学生仍需手动加入");
     }
     await gate.click();
     await a.getByRole("heading", { name: "已加入课堂，准备好出发", exact: true }).waitFor();
@@ -63,7 +71,7 @@ async (page) => {
     await b.reload();
     await field(b, "领域").waitFor();
     check(await field(b, "领域").inputValue() === "校园学习草稿", "刷新丢失草稿");
-    await b.screenshot({ path: "output/playwright/student-locked-tablet-v2.png", fullPage: true });
+    await b.screenshot({ path: "output/playwright/student-locked-tablet-v3.png", fullPage: true });
     await submit(a).click();
     await post(a, "小禾（演示）").waitFor();
     check(await locked(b).isVisible() && await post(b, "小禾（演示）").count() === 0, "未提交者看到同学内容");
@@ -115,13 +123,13 @@ async (page) => {
     check(desktop.sideBySide && desktop.width === desktop.scrollWidth, "桌面左右布局或宽度错误");
     check(tablet.sideBySide && tablet.width === tablet.scrollWidth, "平板横屏左右布局或宽度错误");
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.screenshot({ path: "output/playwright/teacher-desktop-v2.png", fullPage: true });
-    await a.screenshot({ path: "output/playwright/student-desktop-v2.png", fullPage: true });
-    await b.screenshot({ path: "output/playwright/student-tablet-v2.png", fullPage: true });
+    await page.screenshot({ path: "output/playwright/teacher-desktop-v3.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-desktop-v3.png", fullPage: true });
+    await b.screenshot({ path: "output/playwright/student-tablet-v3.png", fullPage: true });
     await a.setViewportSize({ width: 1920, height: 1080 });
     const large = await a.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
     check(large.width === large.scrollWidth, "大屏页面横向溢出");
-    await a.screenshot({ path: "output/playwright/student-large-v2.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-large-v3.png", fullPage: true });
     await gate.click();
     for (const p of [a, b]) {
       await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
@@ -133,7 +141,39 @@ async (page) => {
     await button(page, "确认结束课堂").click();
     for (const p of [a, b]) await p.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
     check(await page.getByRole("row").filter({ hasText: "小宇（演示）" }).count() === 1, "结束后教师记录丢失");
+    check(await page.getByRole("textbox", { name: "学生加入链接" }).inputValue() === link, "课堂节奏改变了链接");
+    const fresh = await browser.newContext();
+    try {
+      const late = await fresh.newPage();
+      await late.goto(link);
+      await late.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+      check((await fresh.cookies()).every(c => c.name !== "workshop_student"), "结束链接仍创建了学生身份");
+    } finally { await fresh.close(); }
+    await button(page, "开始新一节课").click();
+    await button(page, "确认开始新课堂").click();
+    await page.waitForFunction((previous) => {
+      const value = document.querySelector('[aria-label="学生加入链接"]')?.value;
+      return value?.startsWith("http") && value !== previous;
+    }, link);
+    const nextLink = await page.getByRole("textbox", { name: "学生加入链接" }).inputValue();
+    const fallback = await page.context().newPage();
+    try {
+      await fallback.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined }));
+      await fallback.goto(base + "/teacher");
+      await button(fallback, "复制学生端链接").click();
+      await button(fallback, "链接已复制").waitFor();
+      check(await page.evaluate(() => navigator.clipboard.readText()) === nextLink, "无 Clipboard API 时的复制失败");
+    } finally { await fallback.close(); }
+    await a.reload();
+    await a.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+    await b.goto(nextLink);
+    await b.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
+    await b.goto(link);
+    await b.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+    await b.goto(nextLink);
+    await b.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector(".classroom-stats strong")?.textContent === "1");
     check(problems.length === 0, JSON.stringify(problems));
-    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
+    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["fixed link copy", "copy fallback without Clipboard API", "automatic entry without code", "stable link after controls", "old link isolation", "page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
   } finally { await ca.close(); await cb.close(); }
 }

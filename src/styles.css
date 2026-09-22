@@ -287,12 +287,7 @@ button {
 .entry-form form .primary {
   margin-top: 20px;
 }
-.code-input {
-  font-size: 28px;
-  letter-spacing: 10px;
-  font-weight: 650;
-  height: 62px;
-}
+
 .entry-form .fine-print {
   font-size: 11px;
   line-height: 1.9;
@@ -420,13 +415,7 @@ button {
 .share-card .eyebrow {
   font-size: 10px;
 }
-.room-code {
-  font-size: 35px;
-  letter-spacing: 5px;
-  display: block;
-  font-weight: 650;
-  line-height: 1.4;
-}
+
 .share-card p {
   font-size: 10px;
   color: #869082;
@@ -993,9 +982,7 @@ td {
     width: 84px;
     height: 84px;
   }
-  .room-code {
-    font-size: 29px;
-  }
+
   .activity {
     padding: 23px;
   }
@@ -1100,9 +1087,7 @@ td {
     width: 96px;
     height: 96px;
   }
-  .room-code {
-    font-size: 33px;
-  }
+
   .activities {
     grid-template-columns: 1fr;
     gap: 18px;
@@ -1761,4 +1746,23 @@ td {
   .forum-board .section-heading h2 {
     font-size: 19px;
   }
+}
+
+.share-title {
+  display: block;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.5;
+  margin: 5px 0;
+}
+.share-card > div {
+  flex: 1;
+  min-width: 0;
+}
+.share-card > img {
+  flex-shrink: 0;
+}
+.share-card .text-button {
+  font-size: 13px;
+  margin-top: 7px;
 }

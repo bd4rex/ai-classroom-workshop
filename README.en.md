@@ -2,7 +2,7 @@
 
 [中文](README.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
-One teacher, one classroom, two fixed topics. The teacher controls page access and lesson progression. Students join with a classroom code and automatically follow the current topic. They write independently, then unlock that topic’s peer responses on the right after submitting.
+One teacher, one classroom, two fixed topics. The teacher controls page access and lesson progression. Students open a fixed link to enter directly and automatically follow the current topic. They write independently, then unlock that topic’s peer responses on the right after submitting.
 
 This is an independent simplification of [Tongpin Classroom Feedback](https://github.com/bd4rex/tongpin-classroom-feedback), with a separate repository and data directory. It retains the React, Fastify, SQLite, and SSE approach and a fixed workflow. There is no general question bank, activity editor, model configuration, or AI invocation.
 
@@ -13,6 +13,7 @@ This is an independent simplification of [Tongpin Classroom Feedback](https://gi
 | Discover together: AI applications around us | School dropdown, name, field, application scenario, value                                                        | Switch to discovery; pause/resume writing |
 | Design together: future AI applications      | Scenario and basic functions; collect school/name on the first actual submission, otherwise reuse saved identity | Switch to design; pause/resume writing    |
 
+- The teacher can copy the student link and distribute it repeatedly. Students enter automatically without entering a code or pressing a join button. The `/classroom/<classroom ID>` link is fixed once the classroom is created; topic changes, pause, closure, ending, reloads, and restarts do not reset it. The QR code uses the same link.
 - The master page switch controls whether students see the activity. Closing it shows a waiting screen; reopening follows the current topic. Only one of waiting, discovery, or design appears at a time.
 - Switching to design automatically moves all students to the second page, including students who have not submitted discovery. Teachers can return to a previous topic; students cannot navigate topics themselves.
 - Each topic independently requires submission before peer reading. Before submission, a lock notice appears and the server rejects list, search, and pagination requests. Submitting discovery does not unlock design responses.
@@ -20,7 +21,7 @@ This is an independent simplification of [Tongpin Classroom Feedback](https://gi
 - Pausing stops writing while retaining already unlocked responses. Closing the page or ending the lesson hides student forms and peer responses. Ending shows a closing screen; teachers retain access to records and export.
 - Each participant submits once per topic; identical retries do not duplicate records, and submitted work cannot be edited. Drafts stay in the current browser tab across topic switches and reloads. Submitted records persist in the database.
 - Students do not need to refresh manually. Live events and reconnects fetch current state, with a polling fallback approximately every 6–7.5 seconds. Instant synchronization is unavailable while disconnected.
-- Teacher classroom tools provide CSV export and a new-classroom action. End the lesson or close the page first; a new classroom rotates the code and requires students to rejoin. Older records remain in the database, but the interface only views and exports the current classroom, so export before switching.
+- Teacher classroom tools provide CSV export and a new-classroom action. End the lesson or close the page first; a new classroom receives a different fixed link that must be shared again. The old link continues to show the original classroom as ended and never enters the new classroom. Older records remain in the database, but the interface only views and exports the current classroom, so export before switching.
 
 ## Run locally
 
@@ -34,7 +35,7 @@ npm start
 
 Student entry: <http://localhost:3218/>; teacher entry: <http://localhost:3218/teacher>.
 
-The first startup prints a random teacher password in the server terminal. Save it. Students only need the classroom code, with no account registration. New classrooms start with the student page closed and the waiting stage selected. To recover a forgotten teacher password, stop the service first, then run:
+The first startup prints a random teacher password in the server terminal. Save it. Students open the teacher’s fixed link directly, with no account registration. The root path `/` redirects to the current classroom’s fixed link. Repeated visits to the same link reuse the current browser’s student identity. New classrooms start with the student page closed and the waiting stage selected. To recover a forgotten teacher password, stop the service first, then run:
 
 ```bash
 npm run password:reset
@@ -62,7 +63,7 @@ Supports 1–500 schools, with up to 100 characters per name. Students must choo
 
 ## School network and deployment
 
-The default listener is `0.0.0.0:3218`. Students should access the same service using the school server address. Teachers should also open `/teacher` at that address to generate usable student links and QR codes. `localhost` and `127.0.0.1` links only work on the same computer; the interface indicates this.
+The default listener is `0.0.0.0:3218`. Students should access the same service using the school server address. Teachers should also open `/teacher` at that address to generate usable student links and QR codes. For distribution, use a stable server address or domain configured through `PUBLIC_URL`. Classroom links have no expiry, but require that address to remain accessible and the classroom database to be retained. `localhost` and `127.0.0.1` links only work on the same computer; the interface indicates this.
 
 ```bash
 cp .env.example .env
@@ -84,6 +85,7 @@ Docker stores data in the `classroom-data` named volume and mounts the host's `c
 - Names, schools, and responses are **visible to current-classroom students who have submitted the same topic**, and only while that topic is the open current topic. The join page explains this. Unjoined or unsubmitted visitors cannot read peer responses; teacher actions require a password.
 - Student identity uses the current browser cookie. Clearing cookies, changing browser, or changing device creates a new participant. There is no identity verification or cross-device deduplication.
 - Data defaults to `data/classroom.sqlite`, using SQLite WAL. Stop the service before backing up all of `data/`; do not copy only the live database file. Runtime data, passwords, environment files, dependencies, and screenshots are excluded from Git.
+- Previously distributed `/?code=...` links automatically redirect to their original classroom’s new fixed link. There is no code-entry screen. Changing the entry flow does not reset passwords or student work.
 - Upgrading from 0.1 adds lesson-state fields while preserving classrooms, identities, and responses. If both old switches were open, the selected topic becomes design; discovery-only becomes discovery; both closed becomes waiting. Stop the service and back up its data directory before upgrading.
 - Run one service process, not multiple instances sharing this database. SSE notifications are coalesced and lists are paginated to bound response size. Actual classroom capacity needs testing on the target devices and network.
 - No external AI service or model key is used. Discussing AI in this application incurs no model invocation charges.
@@ -95,7 +97,7 @@ npm run check
 npm audit --omit=dev
 ```
 
-Tests use isolated temporary databases and cover authorization, topic synchronization, direct design without discovery, per-topic sharing gates, the master switch, pause/end controls, stale control rejection, legacy migration, concurrent deduplication, 150 participants making 300 submissions, restart recovery, new-classroom isolation, and real HTTP SSE. See [TEST_REPORT.en.md](TEST_REPORT.en.md) for the verified scope.
+Tests use isolated temporary databases and cover fixed-link stability, automatic identity reuse, old-link isolation, authorization, topic synchronization, direct design without discovery, per-topic sharing gates, the master switch, pause/end controls, stale control rejection, legacy migration, concurrent deduplication, 150 participants making 300 submissions, restart recovery, new-classroom isolation, and real HTTP SSE. See [TEST_REPORT.en.md](TEST_REPORT.en.md) for the verified scope.
 
 | File                               | Purpose                                                                   |
 | ---------------------------------- | ------------------------------------------------------------------------- |

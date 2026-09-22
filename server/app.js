@@ -106,8 +106,13 @@ export async function buildApp({
         hash(value),
         Date.now(),
       );
-    if (!person || person.room_id !== store.meta("current"))
-      throw new AppError("请重新输入课堂码加入课堂", 401);
+    if (
+      !person ||
+      person.room_id !== store.meta("current") ||
+      (request.query.classroomId !== undefined &&
+        person.room_id !== request.query.classroomId)
+    )
+      throw new AppError("请重新打开老师分享的学生链接", 401);
     return person;
   }
   function audience(request) {
@@ -200,7 +205,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.2.0",
+    version: "0.3.0",
   }));
   function studentState(request, reply) {
     const person = student(request);
@@ -312,7 +317,7 @@ export async function buildApp({
   app.get("/api/teacher/share", async (request) => {
     teacher(request);
     const base = publicUrl || `${request.protocol}://${request.headers.host}`;
-    const url = `${base}/?code=${store.room().code}`;
+    const url = `${base}/classroom/${store.room().id}`;
     return {
       url,
       qr: await QRCode.toDataURL(url, {
@@ -324,14 +329,18 @@ export async function buildApp({
   });
   app.post("/api/join", async (request, reply) => {
     limit(`join:${request.ip}`, 600);
-    if (request.body?.code !== store.room().code)
-      throw new AppError("课堂码不正确，请向老师确认", 404);
+    const classroomId = request.body?.classroomId;
+    const room =
+      typeof classroomId === "string" && classroomId.length <= 100
+        ? store.room(classroomId)
+        : null;
+    if (!room)
+      throw new AppError("课堂链接无效，请使用老师分享的完整链接", 404);
+    if (room.id !== store.meta("current")) return { state: null, ended: true };
     try {
-      const existing = student(request);
-      return state(existing);
+      return { state: studentState(request, reply) };
     } catch {}
-    if (store.room().stage === "ended")
-      throw new AppError("本节课堂已结束，请向老师索取新课堂码", 409);
+    if (room.stage === "ended") return { state: null, ended: true };
     const value = token(),
       id = randomUUID();
     store.run(
@@ -343,7 +352,9 @@ export async function buildApp({
     );
     setCookie(reply, "workshop_student", value);
     broadcast();
-    return state(store.get("SELECT * FROM participants WHERE id=?", id));
+    return {
+      state: state(store.get("SELECT * FROM participants WHERE id=?", id)),
+    };
   });
   app.get("/api/student/state", async (request, reply) =>
     studentState(request, reply),
@@ -495,7 +506,7 @@ export async function buildApp({
     ];
     reply.header(
       "Content-Disposition",
-      `attachment; filename="ai-classroom-${store.room().code}.csv"`,
+      `attachment; filename="ai-classroom-${store.room().id}.csv"`,
     );
     return reply
       .type("text/csv; charset=utf-8")
@@ -544,6 +555,19 @@ export async function buildApp({
     clearTimeout(pendingBroadcast);
     if (vite) await vite.close();
     store.close();
+  });
+  app.get("/", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    // Previously distributed links keep pointing at their original classroom.
+    const legacyCode = request.query.code;
+    const id =
+      legacyCode === undefined
+        ? store.meta("current")
+        : store.get("SELECT id FROM rooms WHERE code=?", String(legacyCode))
+            ?.id;
+    return reply.redirect(
+      `/classroom/${encodeURIComponent(id || "unavailable")}`,
+    );
   });
   if (serveStatic) {
     if (dev) {

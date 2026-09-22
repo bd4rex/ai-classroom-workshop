@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID, randomInt, createHash } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { mkdirSync, chmodSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 
@@ -85,26 +85,23 @@ export function createStore(directory) {
       run(
         "UPDATE rooms SET discover_open=0,design_open=0,page_open=0,stage='ended',paused=1,revision=revision+1",
       );
-      let code;
-      do {
-        code = String(randomInt(100000, 1000000));
-      } while (get("SELECT id FROM rooms WHERE code=?", code));
       const id = randomUUID();
+      // Keep the legacy column for previously shared URLs; new rooms use their ID.
       run(
         "INSERT INTO rooms (id,code,created_at) VALUES (?,?,?)",
         id,
-        code,
+        id,
         Date.now(),
       );
       setMeta("current", id);
       return room();
     });
   }
-  function room() {
-    const value = get("SELECT * FROM rooms WHERE id=?", meta("current"));
+  function room(id = meta("current")) {
+    const value = get("SELECT * FROM rooms WHERE id=?", id);
+    if (!value) return null;
     return {
       id: value.id,
-      code: value.code,
       stage: value.stage,
       pageOpen: !!value.page_open,
       paused: !!value.paused,

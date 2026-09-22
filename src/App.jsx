@@ -46,19 +46,29 @@ const emptyDiscovery = {
   value: "",
 };
 const emptyDesign = { scenario: "", function: "" };
-function useClassroom(role) {
+function useClassroom(role, classroomId) {
   const [state, setState] = useState(null),
     [loading, setLoading] = useState(true);
   const [error, setError] = useState(""),
-    [connected, setConnected] = useState(false);
+    [connected, setConnected] = useState(false),
+    [ended, setEnded] = useState(false);
   const queue = useRef();
   useEffect(() => {
     let active = true;
     queue.current = createRefreshQueue(async () => {
       try {
-        const result = await api(`/api/session?role=${role}`);
+        const query = new URLSearchParams({
+          role,
+          ...(role === "student" ? { classroomId } : {}),
+        });
+        let result = await api(`/api/session?${query}`);
+        if (!active) return;
+        if (role === "student" && !result.state) {
+          result = await api("/api/join", { classroomId });
+        }
         if (active) {
           setState(result.state);
+          setEnded(!!result.ended);
           setError("");
         }
       } catch (e) {
@@ -75,11 +85,15 @@ function useClassroom(role) {
       active = false;
       queue.current.stop();
     };
-  }, [role]);
+  }, [role, classroomId]);
   const authenticated = !!state;
   useEffect(() => {
     if (!authenticated) return;
-    const events = new EventSource(`/api/events?role=${role}`);
+    const query = new URLSearchParams({
+      role,
+      ...(role === "student" ? { classroomId } : {}),
+    });
+    const events = new EventSource(`/api/events?${query}`);
     const update = () => queue.current.update();
     events.addEventListener("ready", () => {
       setConnected(true);
@@ -98,11 +112,12 @@ function useClassroom(role) {
       document.removeEventListener("visibilitychange", visible);
       setConnected(false);
     };
-  }, [authenticated, role]);
+  }, [authenticated, role, classroomId]);
   return {
     state,
     loading,
     error,
+    ended,
     connected,
     refresh: useCallback(() => queue.current.update(), []),
   };
@@ -138,7 +153,7 @@ function ErrorText({ children }) {
 function Header({ teacher, state, connected, onLogout }) {
   return (
     <header className="site-header">
-      <a className="brand" href={teacher ? "/teacher" : "/"}>
+      <a className="brand" href={teacher ? "/teacher" : location.pathname}>
         <span className="brand-mark">
           <Sparkles size={23} />
         </span>
@@ -170,10 +185,8 @@ function Header({ teacher, state, connected, onLogout }) {
     </header>
   );
 }
-function Entry({ teacher, refresh }) {
-  const [value, setValue] = useState(() =>
-    teacher ? "" : new URLSearchParams(location.search).get("code") || "",
-  );
+function TeacherEntry({ refresh }) {
+  const [value, setValue] = useState("");
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const submit = async (e) => {
@@ -181,10 +194,7 @@ function Entry({ teacher, refresh }) {
     setBusy(true);
     setError("");
     try {
-      await api(
-        teacher ? "/api/login" : "/api/join",
-        teacher ? { password: value } : { code: value.trim() },
-      );
+      await api("/api/login", { password: value });
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -228,43 +238,51 @@ function Entry({ teacher, refresh }) {
         </div>
       </section>
       <section className="entry-form">
-        <span className="pill">{teacher ? "教师工作台" : "欢迎来到课堂"}</span>
-        <h2>{teacher ? "准备好，一起出发" : "加入我们的共创"}</h2>
-        <p>
-          {teacher
-            ? "由你控制页面开关、主题切换和课堂节奏。"
-            : "输入老师提供的 6 位课堂码，即可参与。"}
-        </p>
+        <span className="pill">教师工作台</span>
+        <h2>准备好，一起出发</h2>
+        <p>由你控制页面开关、主题切换和课堂节奏。</p>
         <form onSubmit={submit}>
-          <label htmlFor="entry-value">{teacher ? "教师密码" : "课堂码"}</label>
+          <label htmlFor="entry-value">教师密码</label>
           <input
             id="entry-value"
-            type={teacher ? "password" : "text"}
-            inputMode={teacher ? undefined : "numeric"}
-            autoComplete={teacher ? "current-password" : "off"}
-            className={teacher ? "" : "code-input"}
-            maxLength={teacher ? 128 : 6}
-            pattern={teacher ? undefined : "[0-9]{6}"}
-            placeholder={teacher ? "请输入教师密码" : "000000"}
+            type="password"
+            autoComplete="current-password"
+            maxLength={128}
+            placeholder="请输入教师密码"
             value={value}
             required
-            onChange={(e) =>
-              setValue(
-                teacher ? e.target.value : e.target.value.replace(/\D/g, ""),
-              )
-            }
+            onChange={(e) => setValue(e.target.value)}
           />
           <ErrorText>{error}</ErrorText>
           <button className="primary wide" disabled={busy}>
-            {busy ? "正在进入…" : teacher ? "进入教师工作台" : "加入课堂"}
+            {busy ? "正在进入…" : "进入教师工作台"}
             <ArrowRight size={18} />
           </button>
         </form>
-        <p className="fine-print">
-          {teacher
-            ? "首次启动时，教师密码显示在服务终端中。"
-            : "无需注册账号。每个主题提交后，才能查看同学的学校、姓名和作品。"}
+        <p className="fine-print">首次启动时，教师密码显示在服务终端中。</p>
+      </section>
+    </main>
+  );
+}
+function StudentEntrance({ ended, error, refresh }) {
+  return (
+    <main className="workspace student-workspace">
+      <section className="classroom-curtain" aria-live="polite">
+        <div className="curtain-icon">
+          {ended ? <CircleCheck size={38} /> : <LockKeyhole size={38} />}
+        </div>
+        <span className="eyebrow">AI 共创课堂</span>
+        <h1>{ended ? "本节课堂已结束" : "暂时无法进入课堂"}</h1>
+        <p>
+          {ended
+            ? "这节课堂已经结束，谢谢你的参与。"
+            : error || "请打开老师分享的完整学生链接。"}
         </p>
+        {!ended && (
+          <button className="secondary" onClick={refresh}>
+            重新连接课堂
+          </button>
+        )}
       </section>
     </main>
   );
@@ -368,10 +386,13 @@ function StudentActivity({ kind, state, refresh }) {
         ? { field: draft.field, scenario: draft.scenario, value: draft.value }
         : { scenario: draft.scenario, function: draft.function };
     try {
-      await api(`/api/student/submit/${kind}`, {
-        ...content,
-        ...(needsIdentity ? identity : {}),
-      });
+      await api(
+        `/api/student/submit/${kind}?classroomId=${encodeURIComponent(room.id)}`,
+        {
+          ...content,
+          ...(needsIdentity ? identity : {}),
+        },
+      );
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -509,7 +530,7 @@ function StudentActivity({ kind, state, refresh }) {
           </fieldset>
           <ErrorText>{error}</ErrorText>
           <p className="form-hint">
-            先独立思考；提交后，本主题的同学分享自动开放。
+            先独立思考；提交后，你的学校、姓名和作品将与本主题已提交的同学互相可见。
           </p>
         </form>
       )}
@@ -684,7 +705,7 @@ function StudentClassroom({ state, refresh }) {
             <Monitor size={38} />
           )}
         </div>
-        <span className="eyebrow">课堂 {room.code}</span>
+        <span className="eyebrow">AI 共创课堂</span>
         <h1>
           {ended
             ? "本节课堂已结束"
@@ -718,7 +739,7 @@ function StudentClassroom({ state, refresh }) {
     <>
       <div className="student-stage-heading">
         <div>
-          <span className="eyebrow">课堂 {room.code} · 跟随老师的节奏</span>
+          <span className="eyebrow">AI 共创课堂 · 跟随老师的节奏</span>
           <h1>{activities[kind].subtitle}</h1>
         </div>
         <ol className="student-progress" aria-label="课堂主题进度">
@@ -778,6 +799,7 @@ function Share({ room }) {
   const [share, setShare] = useState(null),
     [copied, setCopied] = useState(false),
     [error, setError] = useState("");
+  const linkInput = useRef(null);
   useEffect(() => {
     let live = true;
     setShare(null);
@@ -796,10 +818,22 @@ function Share({ room }) {
     };
   }, [room.id]);
   const copy = async () => {
+    setError("");
     try {
-      await navigator.clipboard.writeText(share.url);
+      try {
+        await navigator.clipboard.writeText(share.url);
+      } catch {
+        // Plain HTTP on a school LAN may not expose the Clipboard API.
+        const focused = document.activeElement;
+        linkInput.current.focus();
+        linkInput.current.select();
+        const success = document.execCommand("copy");
+        focused?.focus();
+        if (!success) throw new Error("Copy unavailable");
+      }
       setCopied(true);
     } catch {
+      setCopied(false);
       setError("请在下方选中链接后复制。");
     }
   };
@@ -809,12 +843,12 @@ function Share({ room }) {
   return (
     <aside className="share-card">
       <div>
-        <span className="eyebrow">本节课堂码</span>
-        <strong className="room-code">{room.code}</strong>
-        <p>打开学生页面，输入课堂码加入</p>
+        <span className="eyebrow">学生固定链接</span>
+        <strong className="share-title">打开链接，直接进入</strong>
+        <p>本节课始终使用这一链接，可反复转发。</p>
         <button className="text-button" onClick={copy} disabled={!share}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
-          {copied ? "链接已复制" : "复制学生链接"}
+          {copied ? "链接已复制" : "复制学生端链接"}
         </button>
         <ErrorText>{error}</ErrorText>
       </div>
@@ -827,9 +861,10 @@ function Share({ room }) {
         />
       )}
       <input
+        ref={linkInput}
         className="share-url"
         aria-label="学生加入链接"
-        value={share?.url || "正在生成链接…"}
+        value={share?.url || "正在读取链接…"}
         readOnly
         onFocus={(e) => e.target.select()}
       />
@@ -877,7 +912,7 @@ function Board({ state, role, fixedKind }) {
     const queue = createRefreshQueue(async () => {
       try {
         const result = await api(
-          `/api/board?${new URLSearchParams({ role, kind, page: String(page), q: filter })}`,
+          `/api/board?${new URLSearchParams({ role, kind, page: String(page), q: filter, ...(student ? { classroomId: state.room.id } : {}) })}`,
         );
         if (active) {
           setData(result);
@@ -1129,7 +1164,7 @@ function ClassroomTools({ state, refresh }) {
         {confirm && (
           <div className="reset-confirm">
             <p>
-              开始新课堂会更换课堂码，让当前学生重新加入。旧记录保留在数据库中；当前页面只展示新课堂，请先导出需要的记录。
+              新课堂会生成自己的固定链接，需要重新分享。旧链接继续对应已结束的课堂，旧记录保留在数据库中；请先导出需要的记录。
             </p>
             <button
               className="primary"
@@ -1155,8 +1190,13 @@ function ClassroomTools({ state, refresh }) {
 }
 export default function App() {
   const teacher = location.pathname.startsWith("/teacher"),
-    role = teacher ? "teacher" : "student";
-  const { state, loading, error, connected, refresh } = useClassroom(role);
+    role = teacher ? "teacher" : "student",
+    classroomId =
+      location.pathname.match(/^\/classroom\/([^/]+)\/?$/)?.[1] || "";
+  const { state, loading, error, ended, connected, refresh } = useClassroom(
+    role,
+    classroomId,
+  );
   const [logoutError, setLogoutError] = useState("");
   const logout = async () => {
     try {
@@ -1180,8 +1220,14 @@ export default function App() {
         </main>
       ) : !state ? (
         <>
-          <Entry teacher={teacher} refresh={refresh} />
-          <ErrorText>{error}</ErrorText>
+          {teacher ? (
+            <>
+              <TeacherEntry refresh={refresh} />
+              <ErrorText>{error}</ErrorText>
+            </>
+          ) : (
+            <StudentEntrance ended={ended} error={error} refresh={refresh} />
+          )}
         </>
       ) : (
         <main
