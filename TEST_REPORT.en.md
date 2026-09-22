@@ -6,7 +6,7 @@ Validation date: 2026-09-22, version 0.3.0. Environment: local macOS, Node.js 24
 
 ## Automated checks
 
-`npm run check` passed: 25 tests passed, 0 failed, and the production build succeeded. Production dependencies are unchanged. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
+`npm run check` passed: 25 tests passed, 0 failed, and the production build succeeded. An isolated `npm ci --ignore-scripts --no-audit --no-fund` install passed, with all locked dependency entries matching the previous release. Production dependencies are unchanged. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
 
 Coverage includes teacher authorization, same-origin writes, stable links, automatic identity reuse, old-link isolation, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
 

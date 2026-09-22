@@ -39,3 +39,14 @@
 - Repository: `bd4rex/ai-classroom-workshop`; branch: `main`; feature commit: `124cf737a897abde9df1378c23504a3e2bc1000c`. Pushed and read back, confirming that the local commit matches remote `main`.
 - The original project remains at `f597af64b2ac199ba69dd6eb301ba5317027c64a` with a clean working tree. No school-server deployment, physical-device acceptance, wireless-network acceptance, or real classroom capacity acceptance was performed.
 - This bilingual handoff entry is retained in a follow-up documentation commit. Use local `HEAD` and remote `main` for the subsequent current version.
+
+## 2026-09-22 22:16 · Fixed student links and automatic entry
+
+- Removed classroom-code entry as requested. Teachers copy a fixed student link and students enter automatically. Each classroom's `/classroom/<classroom ID>` path is determined when it is created.
+- The same classroom link survives topic switches, pause, closure, ending, reloads, and restarts. A new classroom has a separate link; old links show their original classroom as ended and never enter the new one. Previously distributed legacy links retain their original classroom mapping.
+- Per-topic submission-before-sharing remains enforced. Student sessions, response lists, and submissions bind to the visited classroom; repeated visits reuse the same browser identity.
+- The copy button includes a fallback for school-network HTTP. Browser tests verified copied contents both with the Clipboard API and with that API unavailable.
+- Validation: 25 automated tests, the production build, and the full browser workflow with a teacher and two isolated students passed, covering copying, automatic entry, stable links, old-link isolation, and existing classroom synchronization. Dependency versions are identical to the previous release; `npm ci --ignore-scripts --no-audit --no-fund` passed in an isolated directory.
+- The local preview was stopped, backed up, and upgraded to 0.3.0, preserving the classroom, password, and responses. Teacher and fixed student-link pages are open and the local preview remains running. Runtime data, backups, and passwords are excluded from Git.
+- Repository: `bd4rex/ai-classroom-workshop`; branch: `main`; feature commit: `6e3c5e58b51a285eda6bbd7563ca6b11c9377c6e`, pushed and read back successfully. This log and the dependency-lock correction are published in the following commit; use local `HEAD` and remote `main` for the current version.
+- The original project remains clean. No school-server deployment was performed. Distribution across schools requires a consistently accessible server address or domain and retention of the classroom database.
