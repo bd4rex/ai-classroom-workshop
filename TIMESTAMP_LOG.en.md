@@ -28,3 +28,14 @@
 - `npm run check` passed: 14 tests and the production build. An isolated API check confirmed that all six schools can submit and the old placeholder is rejected. The complete browser workflow was not rerun for this update.
 - Repository: `bd4rex/ai-classroom-workshop`; branch: `main`; school-list commit: `5160970a52373a47ac69a74c52ca63a3578be352`. Pushed and verified that local `HEAD` matched remote `main`.
 - The pending school-list item is complete. No server deployment was performed; any existing instance needs to pull the update and restart to load the new list.
+
+## 2026-09-22 14:25 · Teacher-synchronized progression and gated sharing
+
+- Updated user confirmation: the teacher controls page access and the current topic. All students follow a switch to design, even without a discovery submission. Peer responses appear on the right only after submitting that same topic.
+- Version 0.2.0 adds waiting, discovery, design, pause/resume, and ending states; split layout, forum-style rows, independent server-side reading gates for each topic, retained drafts, and identity collection on the first actual submission.
+- Computer-room desktops are the primary interface target, with landscape tablets and classroom displays also considered. Narrow phones are not a dedicated adaptation target. Viewports checked: 1366 × 768, 1024 × 768, and 1920 × 1080.
+- Validation: 21 automated tests and the production build passed. One teacher and two isolated students completed the browser workflow without page exceptions or console errors, covering synchronized topics, skipping the first submission, independent unlocks, pause, page gating, ending, search, drafts, and reload recovery.
+- Local preview: stopped and backed up the existing preview database before upgrading, retaining its classroom code and demonstration work. Version 0.2.0 is running at `http://127.0.0.1:3218`; teacher and unsubmitted-student pages are open. Preview data and backups remain excluded from Git.
+- Repository: `bd4rex/ai-classroom-workshop`; branch: `main`; feature commit: `124cf737a897abde9df1378c23504a3e2bc1000c`. Pushed and read back, confirming that the local commit matches remote `main`.
+- The original project remains at `f597af64b2ac199ba69dd6eb301ba5317027c64a` with a clean working tree. No school-server deployment, physical-device acceptance, wireless-network acceptance, or real classroom capacity acceptance was performed.
+- This bilingual handoff entry is retained in a follow-up documentation commit. Use local `HEAD` and remote `main` for the subsequent current version.
