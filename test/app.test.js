@@ -38,12 +38,13 @@ function request(app, method, url, payload, session, extra = {}) {
     },
   });
 }
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "ai-workshop-test-"));
   let app = await buildApp({
     dataDir,
     initialPassword: password,
     serveStatic: false,
+    ...options,
   });
   t.after(async () => {
     await app.close();
@@ -109,6 +110,7 @@ async function fixture(t) {
         dataDir,
         initialPassword: "should-not-replace-password",
         serveStatic: false,
+        ...options,
       });
     },
   };
@@ -1051,6 +1053,116 @@ test(
     }
   },
 );
+
+test(
+  "教师实时连接通过鉴权后立即发送事件及心跳，注销时关闭连接",
+  { timeout: 30000 },
+  async (t) => {
+    const f = await fixture(t),
+      student = await f.student();
+    await f.app.listen({ port: 0, host: "127.0.0.1" });
+    const base = `http://127.0.0.1:${f.app.server.address().port}`;
+    for (const session of ["", student]) {
+      const denied = await fetch(base + "/api/events?role=teacher", {
+        headers: { cookie: session },
+      });
+      assert.equal(denied.status, 401);
+    }
+    const response = await fetch(base + "/api/events?role=teacher", {
+      headers: { cookie: f.teacher, "accept-encoding": "gzip" },
+      signal: AbortSignal.timeout(27000),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(
+      response.headers.get("content-type"),
+      "text/event-stream; charset=utf-8",
+    );
+    assert.equal(response.headers.get("content-encoding"), "identity");
+    assert.equal(response.headers.get("x-accel-buffering"), "no");
+    assert.match(response.headers.get("cache-control"), /no-store/);
+    const reader = response.body.getReader(),
+      decoder = new TextDecoder();
+    try {
+      const first = await reader.read();
+      assert.match(decoder.decode(first.value), /event: ready/);
+      let content = "";
+      while (!content.includes("event: heartbeat")) {
+        const next = await reader.read();
+        assert.equal(next.done, false);
+        content += decoder.decode(next.value);
+      }
+      await request(f.app, "POST", "/api/logout", {}, f.teacher);
+      assert.equal((await reader.read()).done, true);
+    } finally {
+      await reader.cancel();
+    }
+  },
+);
+
+test("HTTPS 代理下分享使用浏览器实际地址，固定 PUBLIC_URL 优先且拒绝畸形地址", async (t) => {
+  const f = await fixture(t);
+  const share = await request(
+    f.app,
+    "GET",
+    "/api/teacher/share?origin=https%3A%2F%2Fclassroom.example.edu",
+    undefined,
+    f.teacher,
+    { host: "internal:3218" },
+  );
+  assert.equal(
+    share.json().url,
+    `https://classroom.example.edu/classroom/${f.app.store.room().id}`,
+  );
+  for (const origin of [
+    "javascript:alert(1)",
+    "https://user:secret@example.edu",
+    "https://example.edu/path",
+    "https://example.edu/?q=1",
+    "invalid",
+  ]) {
+    assert.equal(
+      (
+        await request(
+          f.app,
+          "GET",
+          `/api/teacher/share?origin=${encodeURIComponent(origin)}`,
+          undefined,
+          f.teacher,
+        )
+      ).statusCode,
+      400,
+    );
+  }
+  const fixed = await fixture(t, { publicUrl: "https://students.example.edu" });
+  const result = await request(
+    fixed.app,
+    "GET",
+    "/api/teacher/share?origin=https%3A%2F%2Fteacher.example.edu",
+    undefined,
+    fixed.teacher,
+  );
+  assert.equal(
+    result.json().url,
+    `https://students.example.edu/classroom/${fixed.app.store.room().id}`,
+  );
+});
+
+test("另一份数据库生成的课堂链接不会被悄悄替换为当前课堂", async (t) => {
+  const source = await fixture(t),
+    deployed = await fixture(t);
+  const originalId = source.app.store.room().id;
+  const invalid = await request(deployed.app, "POST", "/api/join", {
+    classroomId: originalId,
+  });
+  assert.equal(invalid.statusCode, 404);
+  assert.match(invalid.json().error, /当前网站找不到这节课堂/);
+  assert.equal(deployed.app.store.counts().joined, 0);
+  const valid = await request(deployed.app, "POST", "/api/join", {
+    classroomId: deployed.app.store.room().id,
+  });
+  assert.equal(valid.statusCode, 200);
+  assert.equal(valid.json().state.room.id, deployed.app.store.room().id);
+});
 
 test("固定学生链接在反复复制、切换、暂停、关闭、结束和服务重启后保持不变", async (t) => {
   const f = await fixture(t);

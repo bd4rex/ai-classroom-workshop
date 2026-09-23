@@ -2,6 +2,16 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-09-23 11:34 · Deployment connection status and proxy compatibility
+
+- Version 0.4.1 fixes the misleading reconnecting message while periodic synchronization still works. The header distinguishes live synchronization, healthy polling, and failed state requests. Existing polling remains active; event streams silent for 45 seconds reopen and recovery fetches the latest classroom state.
+- The server flushes event response headers immediately, disables caching and compression, and sends an observable heartbeat every 20 seconds. The Nginx example separately disables buffering, compression, and caching for events and preserves the external Host.
+- Shared student links prefer PUBLIC_URL, otherwise using the actual browser origin to avoid internal HTTP addresses behind HTTPS proxies. Unknown classrooms explicitly direct students to a link copied from the current teacher page; unknown or old links never silently enter a new classroom.
+- Validation: 35 automated checks and the production build passed. Real HTTP covers teacher authorization, handshake, heartbeat, and logout. Both the full teacher/student workflow and browser simulations of silent streams, failed state requests, and recovery passed. The normal flow has no console errors; fault injection creates only expected network resource errors.
+- The local preview was stopped, backed up, and upgraded to 0.4.1. Classroom ID, teacher password, student identities, and both existing responses were verified unchanged. Teacher and student live synchronization recovered and the copied fixed link is unchanged.
+- Chinese and English deployment troubleshooting and validation documentation now explain persistent DATA_DIR storage. No production URL or deployment method was supplied; this update did not inspect or modify the online environment and cannot establish its actual proxy or database configuration.
+- Repository: `bd4rex/ai-classroom-workshop`, branch `main`; use `git log -1` and the remote branch for this release's commit. Runtime data, credentials, screenshots, and backups stay out of Git.
+
 ## 2026-09-23 10:47 · Response filtering and permanent deletion
 
 - Version 0.4.0: teachers can combine topic, school, name, and content filters, delete one response, or select up to 50 responses on the current page for bulk deletion. Confirmation lists selected names and states that deletion is irreversible; filter or page changes clear selections.

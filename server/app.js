@@ -217,7 +217,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.4.0",
+    version: "0.4.1",
   }));
   function studentState(request, reply) {
     const person = student(request);
@@ -328,7 +328,30 @@ export async function buildApp({
   });
   app.get("/api/teacher/share", async (request) => {
     teacher(request);
-    const base = publicUrl || `${request.protocol}://${request.headers.host}`;
+    // The browser sees the public HTTPS origin even when a proxy talks HTTP
+    // to this process. This read-only hint does not change trusted origins.
+    let browserOrigin = "";
+    if (request.query.origin !== undefined) {
+      try {
+        const parsed = new URL(request.query.origin);
+        if (
+          !["http:", "https:"].includes(parsed.protocol) ||
+          parsed.username ||
+          parsed.password ||
+          parsed.pathname !== "/" ||
+          parsed.search ||
+          parsed.hash
+        )
+          throw new Error();
+        browserOrigin = parsed.origin;
+      } catch {
+        throw new AppError("分享地址不正确，请刷新教师页面重试");
+      }
+    }
+    const base =
+      publicUrl ||
+      browserOrigin ||
+      `${request.protocol}://${request.headers.host}`;
     const url = `${base}/classroom/${store.room().id}`;
     return {
       url,
@@ -347,7 +370,10 @@ export async function buildApp({
         ? store.room(classroomId)
         : null;
     if (!room)
-      throw new AppError("课堂链接无效，请使用老师分享的完整链接", 404);
+      throw new AppError(
+        "当前网站找不到这节课堂，请使用老师从当前教师页面复制的完整学生链接",
+        404,
+      );
     if (room.id !== store.meta("current")) return { state: null, ended: true };
     try {
       return { state: studentState(request, reply) };
@@ -583,11 +609,13 @@ export async function buildApp({
       throw new AppError("实时连接繁忙，请稍后重试", 503);
     reply.hijack();
     reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, no-transform",
+      "Content-Encoding": "identity",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     });
+    reply.raw.flushHeaders();
     reply.raw.write("retry: 3000\nevent: ready\ndata: connected\n\n");
     const client = {
       res: reply.raw,
@@ -601,7 +629,8 @@ export async function buildApp({
     for (const client of clients)
       if (
         client.expires < Date.now() ||
-        (!client.res.destroyed && !client.res.write(": heartbeat\n\n"))
+        (!client.res.destroyed &&
+          !client.res.write("event: heartbeat\ndata: connected\n\n"))
       )
         client.res.end();
     for (const [key, value] of limits)

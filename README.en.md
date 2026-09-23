@@ -22,7 +22,7 @@ This is an independent simplification of [Tongpin Classroom Feedback](https://gi
 - Deletion permanently clears response content and removes it from teacher/student lists, search, response counts, and CSV exports. Only a submitted marker remains: its author sees a removal notice and cannot resubmit that topic, while retaining the existing peer-reading entitlement. Future word clouds should use active response lists or exports; this update does not implement word clouds.
 - Pausing stops writing while retaining already unlocked responses. Closing the page or ending the lesson hides student forms and peer responses. Ending shows a closing screen; teachers retain access to records and export.
 - Each participant submits once per topic; identical retries do not duplicate records, and submitted work cannot be edited. Drafts stay in the current browser tab across topic switches and reloads. Submitted records persist in the database.
-- Students do not need to refresh manually. Live events and reconnects fetch current state, with a polling fallback approximately every 6–7.5 seconds. Instant synchronization is unavailable while disconnected.
+- Students do not need to refresh manually. Live events and reconnects fetch current state, with a polling fallback approximately every 6–7.5 seconds. The header distinguishes live synchronization, periodic synchronization, and interrupted connectivity with retries. Periodic synchronization remains usable, with changes normally arriving on the next poll. A live stream with no messages for 45 seconds is reopened automatically. Synchronization is unavailable while disconnected.
 - Teacher classroom tools provide CSV export and a new-classroom action. End the lesson or close the page first; a new classroom receives a different fixed link that must be shared again. The old link continues to show the original classroom as ended and never enters the new classroom. Older records remain in the database, but the interface only views and exports the current classroom, so export before switching.
 
 ## Run locally
@@ -73,6 +73,8 @@ cp .env.example .env
 
 Set `PORT`, `HOST`, `DATA_DIR`, and `SCHOOLS_FILE` in `.env` as needed. `PUBLIC_URL` can fix the student-facing HTTP(S) address, such as `https://classroom.example.edu`, without a path. `npm start` and `npm run dev` read `.env` automatically. `TEACHER_PASSWORD` applies only during initial setup and does not replace an existing password.
 
+Copied links prefer `PUBLIC_URL`; otherwise they use the teacher browser's actual origin so an HTTPS proxy does not produce an internal HTTP address. HTTPS reverse-proxy deployments should still set `PUBLIC_URL` to the external address for correct same-origin write validation.
+
 Local-network HTTP is supported. Set `COOKIE_SECURE=true` for HTTPS. See [deploy/nginx.conf.example](deploy/nginx.conf.example); SSE requires proxy buffering to be disabled.
 
 ```bash
@@ -81,6 +83,14 @@ docker compose logs classroom
 ```
 
 Docker stores data in the `classroom-data` named volume and mounts the host's `config/` directory read-only. The initial password appears in the logs. Run `docker compose restart classroom` after changing the school list. Docker was not built or run during this delivery, and no school server deployment was performed.
+
+## Troubleshooting deployed connections and links
+
+- **Periodic synchronization works but live events do not**: check whether the reverse proxy, compression, or caching buffers `/api/events?role=teacher`. A working response has type `text/event-stream`, sends a `ready` event immediately, and sends a `heartbeat` every 20 seconds. The Nginx example disables buffering, compression, and caching for this route; hosted platforms must also permit streaming responses. If long-lived streams are unavailable, polling still runs every 6–7.5 seconds and is no longer mislabeled as a network outage.
+- **Connectivity is interrupted and retrying**: state requests are also failing. Check service availability, networking, and the browser's `/api/session` response. Recovery automatically returns to periodic or live synchronization; expired teacher sessions return to sign-in.
+- **An old student link fails while a newly copied one works**: compare classroom IDs in the two links. Separate databases or newly created classrooms have distinct IDs; local-preview IDs cannot directly address another deployed database. Preserve the original `DATA_DIR` and SQLite database across deployments. Hosted platforms need a persistent directory or volume, not temporary build storage. Updating code while retaining data does not change the classroom ID or link. Unknown links never silently enter a different classroom.
+
+Version 0.4.1 has passed local real-HTTP and browser fault-simulation checks for these fallback and recovery behaviors. Actual production proxy settings and persistent storage still need verification in the deployed environment.
 
 ## Data and operating boundaries
 

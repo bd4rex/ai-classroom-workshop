@@ -16,12 +16,14 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Clock3,
   Users,
   Wifi,
   WifiOff,
 } from "lucide-react";
 import { api } from "./api.js";
 import { createRefreshQueue } from "./refresh-queue.js";
+import { watchClassroomEvents } from "./live-connection.js";
 
 const activities = {
   discover: {
@@ -94,21 +96,18 @@ function useClassroom(role, classroomId) {
       role,
       ...(role === "student" ? { classroomId } : {}),
     });
-    const events = new EventSource(`/api/events?${query}`);
     const update = () => queue.current.update();
-    events.addEventListener("ready", () => {
-      setConnected(true);
-      update();
+    const stopEvents = watchClassroomEvents(`/api/events?${query}`, {
+      onLive: setConnected,
+      onUpdate: update,
     });
-    events.addEventListener("update", update);
-    events.onerror = () => setConnected(false);
     const timer = setInterval(update, 6000 + Math.random() * 1500);
     const visible = () => {
       if (document.visibilityState === "visible") update();
     };
     document.addEventListener("visibilitychange", visible);
     return () => {
-      events.close();
+      stopEvents();
       clearInterval(timer);
       document.removeEventListener("visibilitychange", visible);
       setConnected(false);
@@ -119,7 +118,7 @@ function useClassroom(role, classroomId) {
     loading,
     error,
     ended,
-    connected,
+    connection: error ? "offline" : connected ? "live" : "polling",
     refresh: useCallback(() => queue.current.update(), []),
   };
 }
@@ -151,7 +150,12 @@ function ErrorText({ children }) {
     </p>
   ) : null;
 }
-function Header({ teacher, state, connected, onLogout }) {
+function Header({ teacher, state, connection, onLogout }) {
+  const syncLabels = {
+    live: "课堂实时同步",
+    polling: "课堂定时同步",
+    offline: "连接中断，正在重试",
+  };
   return (
     <header className="site-header">
       <a className="brand" href={teacher ? "/teacher" : location.pathname}>
@@ -164,9 +168,23 @@ function Header({ teacher, state, connected, onLogout }) {
       </a>
       <div className="header-right">
         {state ? (
-          <span className={`connection ${connected ? "" : "reconnecting"}`}>
-            {connected ? <Wifi size={15} /> : <WifiOff size={15} />}
-            {connected ? "课堂实时同步" : "正在恢复实时连接"}
+          <span
+            className={`connection ${connection === "offline" ? "reconnecting" : ""}`}
+            role="status"
+            title={
+              connection === "polling"
+                ? "当前每 6–8 秒自动同步；实时连接恢复后会自动切回。"
+                : undefined
+            }
+          >
+            {connection === "live" ? (
+              <Wifi size={15} />
+            ) : connection === "polling" ? (
+              <Clock3 size={15} />
+            ) : (
+              <WifiOff size={15} />
+            )}
+            {syncLabels[connection]}
           </span>
         ) : (
           <span className="header-note">人工智能通识课</span>
@@ -812,7 +830,7 @@ function Share({ room }) {
   useEffect(() => {
     let live = true;
     setShare(null);
-    api("/api/teacher/share")
+    api(`/api/teacher/share?origin=${encodeURIComponent(location.origin)}`)
       .then((value) => {
         if (live) {
           setShare(value);
@@ -1391,7 +1409,7 @@ export default function App() {
     role = teacher ? "teacher" : "student",
     classroomId =
       location.pathname.match(/^\/classroom\/([^/]+)\/?$/)?.[1] || "";
-  const { state, loading, error, ended, connected, refresh } = useClassroom(
+  const { state, loading, error, ended, connection, refresh } = useClassroom(
     role,
     classroomId,
   );
@@ -1409,7 +1427,7 @@ export default function App() {
       <Header
         teacher={teacher}
         state={state}
-        connected={connected}
+        connection={connection}
         onLogout={logout}
       />
       {loading ? (

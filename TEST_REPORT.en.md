@@ -2,11 +2,11 @@
 
 [中文](TEST_REPORT.md) · [Back to README](README.en.md)
 
-Validation date: 2026-09-23, version 0.4.0. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
+Validation date: 2026-09-23, version 0.4.1. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
 
 ## Automated checks
 
-`npm run check` passed: 29 tests passed, 0 failed, and the production build succeeded. Every locked dependency entry matches the previous release; only the project's own version changed. An isolated `npm ci --ignore-scripts --no-audit --no-fund` install passed for 0.3.0 and was not repeated this time. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
+`npm run check` passed: 35 tests passed, 0 failed, and the production build succeeded. Every locked dependency entry matches the previous release; only the project's own version changed. An isolated `npm ci --ignore-scripts --no-audit --no-fund` install passed for 0.3.0 and was not repeated this time. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
 
 Coverage includes teacher authorization, same-origin writes, stable links, automatic identity reuse, old-link isolation, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
 
@@ -17,6 +17,14 @@ A local Fastify injection test simulates 150 participants sharing an outbound ad
 API tests verify link stability after restart and preservation of the original classroom for legacy links with a `code` parameter. Unknown or missing classroom links are rejected. Session, response-list, and submission requests bind to the visited classroom to avoid cross-classroom tab confusion.
 
 New deletion checks cover combined topic, school, and keyword filtering; batches of up to 50; denial for students and unauthenticated visitors; and rejection of cross-classroom IDs, missing IDs, duplicates, oversized selections, and cross-origin writes without partial changes. Deletion clears database content to `{}` and excludes it from teacher/student lists, search, counts, and CSV. Authors receive a removal marker; resubmission and restoration requests cannot recover the original text, including after restart. A 52-response case verifies pagination after the last page is deleted, and real HTTP SSE verifies deletion notifications. Current submission data no longer contains the original response text, so future word clouds can use cleaned lists or CSV exports. Word clouds are not implemented in this update.
+
+## Connection failure and recovery checks
+
+Real HTTP checks verify the teacher SSE handshake, streaming/no-cache/no-compression headers, a heartbeat after 20 seconds, denial for students and unauthenticated visitors, and stream closure on logout. Clock-controlled tests cover silent streams reopening after 45 seconds, stale events being ignored, heartbeat retention, reconnect refreshes, cleanup, and unavailable EventSource support. HTTPS proxy sharing uses the browser origin unless PUBLIC_URL is configured. Separate-database classroom IDs are rejected without silently joining the current classroom.
+
+`test/browser/connection.js` deliberately holds both teacher and student event requests while allowing normal APIs. Both pages show periodic synchronization, teacher records receive student submissions, and students follow topic changes without refreshing. State-request failures then produce an offline status; restoring requests returns first to polling and then to live synchronization. A missing classroom remains isolated and the correct fixed link reuses the student identity. The script passed without page exceptions. Deliberately aborted network requests produce expected console resource errors. The normal full workflow was also rerun successfully without console errors.
+
+No production URL or deployment method was supplied during this update, so the actual online proxy and data-volume configuration were not inspected. Local fault simulation does not establish the specific production cause.
 
 ## School list and upgrade
 
@@ -56,6 +64,7 @@ In another terminal, use Playwright CLI:
 ```bash
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check open http://127.0.0.1:3219/teacher --headed
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/flow.js
+npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/connection.js
 ```
 
 The QA service uses an isolated `output/qa-*` data directory and an explicit test-only password. Do not use it for an actual classroom. See the [README](README.en.md) for normal operation.
