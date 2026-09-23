@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-09-23 21:00 · New project's production password verification
+
+- Matched “AI教室工作坊网站 2” to `ai5class.coze.site`; production health reports 0.5.0/PostgreSQL/polling and the deployment page shows running revision `e396bbd`. This new project does not establish migration of the older one.
+- Coze's latest record, `3afa2f2`, reports correcting the production password. An independent sign-in with the user-requested password opened the production teacher workspace and survived refresh plus multiple synchronization cycles. No further password, classroom-data, replica, or deployment changes were made.
+- Cause: development and production storage are separate, and `TEACHER_PASSWORD` only initializes an empty database; configuration changes do not reset an existing password. The domain is not a password-hashing input. Bilingual deployment and incident records now preserve the cause, verification limits, and maintenance procedure without credentials.
+
 
 ## 2026-09-23 14:16 · Verified main merge and environment handoff
 

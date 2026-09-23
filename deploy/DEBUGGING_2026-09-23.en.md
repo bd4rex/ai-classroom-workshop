@@ -48,6 +48,16 @@ The user reported successful password entry followed by a signed-out view, inter
 | Coze development | Real cloud PostgreSQL 40 passed; development migration matched every source field; original-password login, refresh, stable link, and teacher/student topic/page controls passed | Production database, replicas, and gateway capacity |
 | Coze production | Old deployment configuration inspected; no development data copied over production | Retention scope, production migration/release, and session/link/500-user acceptance remain pending |
 
+## New-project production password verification (2026-09-23 21:00, Asia/Shanghai)
+
+This check concerns the new project “AI教室工作坊网站 2” and its production domain `https://ai5class.coze.site`. It is separate from the older project above and does not establish migration of that project's data.
+
+- Production `/api/health` returned `version: 0.5.0`, `storage: postgres`, and `syncMode: polling`. The Coze deployment page showed running revision `e396bbd`; its latest maintenance record, `3afa2f2`, reported updating the production password hash and revoking old sessions. Coze performed that database update; this verification did not repeat a password write.
+- The platform record explains that the earlier change affected only development storage and initial-password configuration. Production was already initialized, so changing `TEACHER_PASSWORD` did not replace its stored hash. This matches upstream initialization and database separation; domain names are not inputs to password hashing.
+- Independent browser check: after clearing the password field, the user-requested password opened the production teacher workspace. Refresh and multiple synchronization cycles retained sign-in, with the healthy polling indicator visible. One attempt that appended to the existing field returned a password error; clearing the field removed that input-operation confounder, so it is not evidence of another backend failure.
+- The teacher's sharing URL uses the production domain. No students were joined, responses submitted, classroom controls changed, replica settings altered, or deployment started. This establishes sign-in and refresh persistence only, not full classroom or 500-user production acceptance.
+- The bilingual deployment guide now covers separate development/production passwords, first-initialization configuration, and production-domain verification. Passwords, hashes, cookies, connection strings, and classroom access identifiers are omitted from public records.
+
 ## Where to start next time
 
 Read the [deployment guide](coze.en.md) and choose its new-project or existing-project path. Use the [configuration template](coze.toml.example), not the old ephemeral SQLite setup or hard-coded passwords.

@@ -78,6 +78,19 @@ Code cannot recover responses or classroom mappings from already-lost production
 
 ## Symptoms and next checks
 
+### Production still rejects the password after a change
+
+Passwords are not bound to domains; their hashes live in the selected database. A new domain requires signing in again but does not change the password. Coze development and production databases are separate; preview sign-in does not establish the production password.
+
+`TEACHER_PASSWORD` only applies during first database initialization. Changing `.env`, the deployment command, or environment variables and redeploying does not replace an existing database password.
+
+1. Confirm the project name, production domain, and deployed revision, especially after copying a project or changing its domain. Check the storage backend at the production `/api/health`.
+2. Use an authorized maintenance entry point and confirm that it targets this project's **production database** before replacing the teacher password hash and revoking old teacher sessions. Do not delete databases/classrooms or copy development data over production to reset a password.
+3. Open production `/teacher` in a top-level tab, clear the password field, enter the complete new password, and sign in. Refresh and wait through at least one synchronization cycle; the workspace must remain available. Preview success cannot replace this step.
+4. Record the environment, revision, and verification result. Exclude passwords, hashes, connection strings, and cookies from code, public commit messages, and logs.
+
+For an incorrect-origin message, check whether `PUBLIC_URL` includes the new domain. For immediate sign-out after successful login, check sessions, cookies, and shared storage. Neither necessarily means the password is wrong. See the [incident record](DEBUGGING_2026-09-23.en.md) for the new project's production verification on 2026-09-23.
+
 | Symptom | Investigation order |
 | --- | --- |
 | Correct password followed by sign-out | Check production health for PostgreSQL and verify all replicas share one database; then inspect cookies in a top-level tab. Do not repeatedly reset passwords |
