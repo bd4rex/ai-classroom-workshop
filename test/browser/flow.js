@@ -16,10 +16,12 @@ async (page) => {
   const noClassroomCode = async (p) => check(!(await p.locator("body").innerText()).includes("课堂码"), "页面仍显示课堂码");
   const pauseText = "老师暂停了填写，先听一听大家的想法。已解锁的分享仍可阅读。";
   watch(page);
-  await page.goto(base + "/teacher");
+  await page.goto(base + "/");
   const password = page.getByRole("textbox", { name: "教师密码", exact: true });
   const gate = page.getByRole("switch", { name: "课堂页面开关", exact: true });
   await password.or(gate).first().waitFor();
+  check(page.url() === base + "/teacher", "根地址没有进入教师页面");
+  check(await page.getByRole("link", { name: "学生入口", exact: true }).count() === 0, "教师登录页仍有不固定的学生入口");
   await noClassroomCode(page);
   if (await password.isVisible()) {
     await password.fill("isolated-browser-test-only");
@@ -48,8 +50,13 @@ async (page) => {
   const a = await ca.newPage(), b = await cb.newPage();
   watch(a); watch(b);
   try {
+    await a.goto(base + "/");
+    await a.getByRole("textbox", { name: "教师密码", exact: true }).waitFor();
+    check(a.url() === base + "/teacher", "新访客打开根地址没有进入教师登录页");
+    check((await ca.cookies()).every(c => c.name !== "workshop_student"), "根地址创建了学生身份");
+    await a.screenshot({ path: "output/playwright/root-teacher-login-v042.png", fullPage: true });
     for (const p of [a, b]) {
-      await p.goto(p === a ? base + "/" : link);
+      await p.goto(link);
       await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
       check(p.url() === link, "学生没有停留在课堂固定链接");
       await noClassroomCode(p);
@@ -225,13 +232,21 @@ async (page) => {
     const fallback = await page.context().newPage();
     try {
       await fallback.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined }));
-      await fallback.goto(base + "/teacher");
+      await fallback.goto(base + "/");
       await button(fallback, "复制学生端链接").click();
       await button(fallback, "链接已复制").waitFor();
+      check(fallback.url() === base + "/teacher", "已登录教师访问根地址没有回到工作台");
       check(await page.evaluate(() => navigator.clipboard.readText()) === nextLink, "无 Clipboard API 时的复制失败");
     } finally { await fallback.close(); }
     await a.reload();
     await a.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+    const oldIdentity = (await cb.cookies()).find(c => c.name === "workshop_student")?.value;
+    check(Boolean(oldIdentity), "缺少原课堂的学生身份");
+    await b.goto(base + "/");
+    await b.getByRole("textbox", { name: "教师密码", exact: true }).waitFor();
+    check(b.url() === base + "/teacher", "已有学生身份访问根地址进入了课堂");
+    check((await cb.cookies()).find(c => c.name === "workshop_student")?.value === oldIdentity, "访问根地址改变了学生身份");
+    await page.waitForFunction(() => document.querySelector(".classroom-stats strong")?.textContent === "0");
     await b.goto(nextLink);
     await b.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
     await b.goto(link);
@@ -240,6 +255,6 @@ async (page) => {
     await b.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector(".classroom-stats strong")?.textContent === "1");
     check(problems.length === 0, JSON.stringify(problems));
-    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["no classroom code in visible teacher/student pages", "school and keyword filters", "selection reset on filter change", "single delete with cancel", "permanent single and batch deletion", "live removal from author and peer pages", "fixed link copy", "copy fallback without Clipboard API", "automatic entry without code", "stable link after controls", "old link isolation", "page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
+    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["root opens teacher page without student enrollment", "no classroom code in visible teacher/student pages", "school and keyword filters", "selection reset on filter change", "single delete with cancel", "permanent single and batch deletion", "live removal from author and peer pages", "fixed link copy", "copy fallback without Clipboard API", "automatic entry without code", "stable link after controls", "old link isolation", "page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
   } finally { await ca.close(); await cb.close(); }
 }

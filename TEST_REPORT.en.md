@@ -2,13 +2,13 @@
 
 [中文](TEST_REPORT.md) · [Back to README](README.en.md)
 
-Validation date: 2026-09-23, version 0.4.1. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
+Validation date: 2026-09-23, version 0.4.2. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
 
 ## Automated checks
 
 `npm run check` passed: 35 tests passed, 0 failed, and the production build succeeded. Every locked dependency entry matches the previous release; only the project's own version changed. An isolated `npm ci --ignore-scripts --no-audit --no-fund` install passed for 0.3.0 and was not repeated this time. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
 
-Coverage includes teacher authorization, same-origin writes, stable links, automatic identity reuse, old-link isolation, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
+Coverage includes root entry to the teacher page without student enrollment, teacher authorization, same-origin writes, stable links, automatic identity reuse, old-link isolation, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
 
 Before submission, direct peer list, search, and pagination requests are denied. Submitting one topic does not unlock another. Student state contains only personal work and aggregate counts; teachers can still read all records.
 
@@ -16,13 +16,13 @@ A local Fastify injection test simulates 150 participants sharing an outbound ad
 
 API tests verify link stability after restart and preservation of the original classroom for legacy links with a `code` parameter. Unknown or missing classroom links are rejected. Session, response-list, and submission requests bind to the visited classroom to avoid cross-classroom tab confusion.
 
-New deletion checks cover combined topic, school, and keyword filtering; batches of up to 50; denial for students and unauthenticated visitors; and rejection of cross-classroom IDs, missing IDs, duplicates, oversized selections, and cross-origin writes without partial changes. Deletion clears database content to `{}` and excludes it from teacher/student lists, search, counts, and CSV. Authors receive a removal marker; resubmission and restoration requests cannot recover the original text, including after restart. A 52-response case verifies pagination after the last page is deleted, and real HTTP SSE verifies deletion notifications. Current submission data no longer contains the original response text, so future word clouds can use cleaned lists or CSV exports. Word clouds are not implemented in this update.
+Deletion checks cover combined topic, school, and keyword filtering; batches of up to 50; denial for students and unauthenticated visitors; and rejection of cross-classroom IDs, missing IDs, duplicates, oversized selections, and cross-origin writes without partial changes. Deletion clears database content to `{}` and excludes it from teacher/student lists, search, counts, and CSV. Authors receive a removal marker; resubmission and restoration requests cannot recover the original text, including after restart. A 52-response case verifies pagination after the last page is deleted, and real HTTP SSE verifies deletion notifications. Current submission data no longer contains the original response text, so future word clouds can use cleaned lists or CSV exports. Word clouds are not implemented in this update.
 
 ## Connection failure and recovery checks
 
 Real HTTP checks verify the teacher SSE handshake, streaming/no-cache/no-compression headers, a heartbeat after 20 seconds, denial for students and unauthenticated visitors, and stream closure on logout. Clock-controlled tests cover silent streams reopening after 45 seconds, stale events being ignored, heartbeat retention, reconnect refreshes, cleanup, and unavailable EventSource support. HTTPS proxy sharing uses the browser origin unless PUBLIC_URL is configured. Separate-database classroom IDs are rejected without silently joining the current classroom.
 
-`test/browser/connection.js` deliberately holds both teacher and student event requests while allowing normal APIs. Both pages show periodic synchronization, teacher records receive student submissions, and students follow topic changes without refreshing. State-request failures then produce an offline status; restoring requests returns first to polling and then to live synchronization. A missing classroom remains isolated and the correct fixed link reuses the student identity. The script passed without page exceptions. Deliberately aborted network requests produce expected console resource errors. The normal full workflow was also rerun successfully without console errors.
+For the 0.4.1 release, `test/browser/connection.js` deliberately held both teacher and student event requests while allowing normal APIs. Both pages show periodic synchronization, teacher records receive student submissions, and students follow topic changes without refreshing. State-request failures then produce an offline status; restoring requests returns first to polling and then to live synchronization. A missing classroom remains isolated and the correct fixed link reuses the student identity. The script passed without page exceptions. Deliberately aborted network requests produce expected console resource errors. Version 0.4.2 does not change connection recovery, so the fault-injection browser script was not repeated; automated connection tests and the normal full workflow passed again without console errors.
 
 No production URL or deployment method was supplied during this update, so the actual online proxy and data-volume configuration were not inspected. Local fault simulation does not establish the specific production cause.
 
@@ -36,7 +36,7 @@ The migration test starts from the old schema and retains the classroom, identit
 
 One teacher page and two isolated student browser contexts completed `test/browser/flow.js`, verifying:
 
-1. The copy button returns the correct fixed link, including the fallback when the Clipboard API is unavailable. Students enter automatically without a code field or a join button, and the root path redirects to the current classroom. Students automatically wait when the page is closed. Opening the master switch shows the waiting stage; selecting discovery automatically displays both student forms without reloads.
+1. The copy button returns the correct fixed link, including the fallback when the Clipboard API is unavailable. Students enter automatically without a code field or a join button, and the root path opens teacher sign-in, or the workspace for an authenticated teacher. An existing student identity does not join a new classroom through the root path. The login page has no generic student-entry link, and root visits create no student identity or extra participant. Students automatically wait when the page is closed. Opening the master switch shows the waiting stage; selecting discovery automatically displays both student forms without reloads.
 2. Unsubmitted students only see a lock notice. They still cannot see peer work after another participant submits. The submitter sees a forum-style list on the right.
 3. Pausing disables unsubmitted forms and shows all students a pause notice, while unlocked responses remain readable. Resuming permits writing again.
 4. Selecting design automatically moves both students to the second page, including the student who did not submit discovery. That student can submit design directly, retaining the school/name draft.
@@ -49,7 +49,7 @@ One teacher page and two isolated student browser contexts completed `test/brows
 11. Teacher school and content filters combine correctly, and changing filters clears selected rows. The confirmation dialog names selected students and states that deletion cannot be undone; cancellation preserves records. Single deletion removes the text from its author and peers automatically. Bulk deletion clears both responses in the other topic, while returning to the first topic retains its undeleted response. Students have no deletion controls.
 12. Visible text on login, teacher workspace, student waiting, activity, submitted, and ended pages contains no classroom code. Students still enter automatically through the fixed link.
 
-The full script passed without page exceptions or console errors. Teacher desktop, removed-author desktop, and student tablet screenshots were inspected. Local screenshots and script output are under `output/playwright/` and excluded from Git. The local preview now includes response management while retaining its fixed link.
+The full script passed without page exceptions or console errors. The root-to-teacher login screenshot was inspected, and the full workflow continues to cover teacher/student desktop and tablet layouts. Local screenshots and script output are under `output/playwright/` and excluded from Git. The local preview now runs 0.4.2 with root-to-teacher entry. Its original fixed link, teacher password, student identities, and responses were verified unchanged.
 
 ## Reproduction
 

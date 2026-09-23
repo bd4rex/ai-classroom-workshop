@@ -2,6 +2,14 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-09-23 12:01 · Root entry now opens the teacher page
+
+- Version 0.4.2 redirects the default root path `/` to `/teacher`, showing sign-in for unauthenticated visitors and the workspace for signed-in teachers. Students enter through the fixed link distributed by their teacher; root visits no longer select the current classroom or create a student identity.
+- Removed the teacher login page's generic student-entry link to the root and explained copying and distributing the student link after sign-in. Previously shared fixed links and explicit legacy classroom links still address their original classroom, without changing existing classroom data.
+- Validation: all 35 automated tests and the production build passed, with dependency lock entries unchanged. The full teacher/student browser workflow passed root visits by new visitors, authenticated teachers, and existing students, plus fixed-link distribution, synchronization, sharing gates, deletion, and old-classroom isolation, without page exceptions or console errors.
+- The local preview was stopped, backed up, and upgraded to 0.4.2. The classroom, password, student identities, and both existing responses were verified unchanged. Opening the root now returns to the teacher workspace and the original student link still works. Browser deletion tests used isolated QA data only. The connection fault-injection browser results remain from 0.4.1 and were not repeated.
+- Chinese and English README, validation report, and handoff log are synchronized. Repository: `bd4rex/ai-classroom-workshop`, branch `main`; the remote was verified public before publication, with no visibility change. Use `git log -1` and the remote branch for this release's commit. Runtime data, credentials, screenshots, and backups remain excluded from Git; no online deployment was operated on.
+
 ## 2026-09-23 11:34 · Deployment connection status and proxy compatibility
 
 - Version 0.4.1 fixes the misleading reconnecting message while periodic synchronization still works. The header distinguishes live synchronization, healthy polling, and failed state requests. Existing polling remains active; event streams silent for 45 seconds reopen and recovery fetches the latest classroom state.

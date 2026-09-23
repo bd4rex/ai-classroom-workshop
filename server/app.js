@@ -217,7 +217,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.4.1",
+    version: "0.4.2",
   }));
   function studentState(request, reply) {
     const person = student(request);
@@ -649,13 +649,13 @@ export async function buildApp({
   });
   app.get("/", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    // Previously distributed links keep pointing at their original classroom.
     const legacyCode = request.query.code;
-    const id =
-      legacyCode === undefined
-        ? store.meta("current")
-        : store.get("SELECT id FROM rooms WHERE code=?", String(legacyCode))
-            ?.id;
+    if (legacyCode === undefined) return reply.redirect("/teacher");
+    // Previously distributed links keep pointing at their original classroom.
+    const id = store.get(
+      "SELECT id FROM rooms WHERE code=?",
+      String(legacyCode),
+    )?.id;
     return reply.redirect(
       `/classroom/${encodeURIComponent(id || "unavailable")}`,
     );

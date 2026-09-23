@@ -194,12 +194,12 @@ function Header({ teacher, state, connection, onLogout }) {
             <LogOut size={15} />
             退出
           </button>
-        ) : (
-          <a className="role-link" href={teacher ? "/" : "/teacher"}>
-            {teacher ? "学生入口" : "教师入口"}
+        ) : !teacher ? (
+          <a className="role-link" href="/teacher">
+            教师入口
             <ArrowRight size={14} />
           </a>
-        )}
+        ) : null}
       </div>
     </header>
   );
@@ -259,7 +259,9 @@ function TeacherEntry({ refresh }) {
       <section className="entry-form">
         <span className="pill">教师工作台</span>
         <h2>准备好，一起出发</h2>
-        <p>由你控制页面开关、主题切换和课堂节奏。</p>
+        <p>
+          由你控制页面开关、主题切换和课堂节奏。登录后复制学生端链接，分享给学生。
+        </p>
         <form onSubmit={submit}>
           <label htmlFor="entry-value">教师密码</label>
           <input

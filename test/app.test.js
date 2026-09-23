@@ -1185,10 +1185,16 @@ test("固定学生链接在反复复制、切换、暂停、关闭、结束和�
   assert.equal(new URL(first.url).search, "");
   assert.match(first.qr, /^data:image\/png;base64,/);
   assert.equal(f.app.store.room().code, undefined);
-  const root = await request(f.app, "GET", "/");
-  assert.equal(root.statusCode, 302);
-  assert.equal(root.headers.location, new URL(first.url).pathname);
-  assert.equal(root.headers["cache-control"], "no-store");
+  for (const url of ["/", "/?source=shared"]) {
+    for (const session of [undefined, f.teacher]) {
+      const root = await request(f.app, "GET", url, undefined, session);
+      assert.equal(root.statusCode, 302);
+      assert.equal(root.headers.location, "/teacher");
+      assert.equal(root.headers["cache-control"], "no-store");
+      assert.equal(root.headers["set-cookie"], undefined);
+    }
+  }
+  assert.equal(f.app.store.counts().joined, 0);
   for (const change of [
     { action: "page", open: true },
     { action: "stage", stage: "discover" },

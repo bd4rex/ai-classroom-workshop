@@ -35,9 +35,9 @@ npm run build
 npm start
 ```
 
-Student entry: <http://localhost:3218/>; teacher entry: <http://localhost:3218/teacher>.
+Teacher entry: <http://localhost:3218/> (redirects to `/teacher`). Students use the fixed classroom link copied and distributed by a signed-in teacher.
 
-The first startup prints a random teacher password in the server terminal. Save it. Students open the teacher’s fixed link directly, with no account registration. The root path `/` redirects to the current classroom’s fixed link. Repeated visits to the same link reuse the current browser’s student identity. New classrooms start with the student page closed and the waiting stage selected. To recover a forgotten teacher password, stop the service first, then run:
+The first startup prints a random teacher password in the server terminal. Save it. Students open the teacher’s fixed link directly, with no account registration. The root path `/` opens the teacher sign-in page, or the workspace if already signed in, without automatically joining a classroom. Repeated visits to the same teacher-shared classroom link reuse the current browser’s student identity. New classrooms start with the student page closed and the waiting stage selected. To recover a forgotten teacher password, stop the service first, then run:
 
 ```bash
 npm run password:reset
