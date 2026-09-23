@@ -1,0 +1,134 @@
+{
+  "testedCommit": "6d511e9065072025c7597be7540cc21335ec2444",
+  "totalRequests": 13688,
+  "at": "2026-09-23T05:49:28.161Z",
+  "scope": "local PostgreSQL, 2 separate Node processes, 500 student sessions, polling plus simultaneous bursts",
+  "maxActive": 523,
+  "errors": [],
+  "counts": {
+    "joined": 500,
+    "discover": 500,
+    "design": 499
+  },
+  "metrics": {
+    "login": {
+      "requests": 1,
+      "p50Ms": 59,
+      "p95Ms": 59,
+      "p99Ms": 59,
+      "maxMs": 59
+    },
+    "teacher-state": {
+      "requests": 5,
+      "p50Ms": 3,
+      "p95Ms": 8,
+      "p99Ms": 8,
+      "maxMs": 8
+    },
+    "cross-instance-session": {
+      "requests": 20,
+      "p50Ms": 2,
+      "p95Ms": 3,
+      "p99Ms": 3,
+      "maxMs": 3
+    },
+    "control": {
+      "requests": 3,
+      "p50Ms": 3,
+      "p95Ms": 4,
+      "p99Ms": 4,
+      "maxMs": 4
+    },
+    "join": {
+      "requests": 500,
+      "p50Ms": 148,
+      "p95Ms": 212,
+      "p99Ms": 214,
+      "maxMs": 215
+    },
+    "gated-board": {
+      "requests": 500,
+      "p50Ms": 40,
+      "p95Ms": 81,
+      "p99Ms": 84,
+      "maxMs": 85
+    },
+    "poll": {
+      "requests": 10135,
+      "p50Ms": 2,
+      "p95Ms": 5,
+      "p99Ms": 47,
+      "maxMs": 185
+    },
+    "submit-discover": {
+      "requests": 500,
+      "p50Ms": 104,
+      "p95Ms": 167,
+      "p99Ms": 168,
+      "maxMs": 168
+    },
+    "board": {
+      "requests": 500,
+      "p50Ms": 122,
+      "p95Ms": 173,
+      "p99Ms": 185,
+      "maxMs": 187
+    },
+    "stage-follow": {
+      "requests": 500,
+      "p50Ms": 104,
+      "p95Ms": 111,
+      "p99Ms": 112,
+      "maxMs": 112
+    },
+    "gated-design": {
+      "requests": 500,
+      "p50Ms": 35,
+      "p95Ms": 52,
+      "p99Ms": 53,
+      "maxMs": 54
+    },
+    "submit-design": {
+      "requests": 500,
+      "p50Ms": 78,
+      "p95Ms": 124,
+      "p99Ms": 132,
+      "maxMs": 135
+    },
+    "teacher-board": {
+      "requests": 1,
+      "p50Ms": 2,
+      "p95Ms": 2,
+      "p99Ms": 2,
+      "maxMs": 2
+    },
+    "moderate": {
+      "requests": 1,
+      "p50Ms": 2,
+      "p95Ms": 2,
+      "p99Ms": 2,
+      "maxMs": 2
+    },
+    "moderation-visible": {
+      "requests": 20,
+      "p50Ms": 8,
+      "p95Ms": 9,
+      "p99Ms": 9,
+      "maxMs": 9
+    },
+    "restart-session": {
+      "requests": 1,
+      "p50Ms": 8,
+      "p95Ms": 8,
+      "p99Ms": 8,
+      "maxMs": 8
+    },
+    "restart-student": {
+      "requests": 1,
+      "p50Ms": 8,
+      "p95Ms": 8,
+      "p99Ms": 8,
+      "maxMs": 8
+    }
+  }
+}

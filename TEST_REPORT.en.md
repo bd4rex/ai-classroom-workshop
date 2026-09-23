@@ -1,74 +1,75 @@
-# Validation report
+# Validation record
 
-[中文](TEST_REPORT.md) · [Back to README](README.en.md)
+[中文](TEST_REPORT.md) · [README](README.en.md)
 
-Validation date: 2026-09-23, version 0.4.2. Environment: local macOS, Node.js 24.14.1, Chromium. Tests use isolated databases and demonstration identities. No classroom database from the original Tongpin Classroom Feedback project was read or migrated.
+Date: 2026-09-23; version 0.5.0. Local macOS, Node.js 24.14.1, PostgreSQL 16, Chromium. Automated checks and load tests use isolated databases and synthetic identities, never production classroom submissions.
 
 ## Automated checks
 
-`npm run check` passed: 35 tests passed, 0 failed, and the production build succeeded. Every locked dependency entry matches the previous release; only the project's own version changed. An isolated `npm ci --ignore-scripts --no-audit --no-fund` install passed for 0.3.0 and was not repeated this time. The initial release's `npm audit --omit=dev` reported 0 known vulnerabilities; it was not rerun for this update.
+- PostgreSQL `TEST_DATABASE_URL=... npm run check`: 40 passed, zero failures; production build passed.
+- Default SQLite `npm test`: 37 passed, three PostgreSQL-specific tests intentionally skipped, zero failures.
+- `npm audit --omit=dev`: zero known vulnerabilities. Added the `pg` driver and lockfile entries.
+- Existing rules regressed: teacher root entry, stable links, six schools, teacher controls, submission-gated sharing, skipping to design, pause/close/end, idempotency, immutable identity, search/pagination, moderation, CSV, and restart recovery.
+- Shared storage checks: simultaneous bootstrap creates one classroom; sign in on A and authenticate on B; only one concurrent teacher revision succeeds; logout on B invalidates A; standard PG variables work; required missing storage cannot fall back to SQLite; conflicting HTTP/Secure Cookie configuration fails startup.
+- Migration checks: read-only SQLite inspection, transactional import, preserved classroom ID/password/session/removal receipt, matching counts, and refusal to overwrite existing data.
+- HTTP 200 error pages, invalid JSON, and missing state fail explicitly without pretending the teacher signed out.
 
-Coverage includes root entry to the teacher page without student enrollment, teacher authorization, same-origin writes, stable links, automatic identity reuse, old-link isolation, the master page switch, waiting, topic changes, design submission without discovery, independent sharing gates for each topic, pause/resume, ending, stale controls, school and field validation, concurrent deduplication, CSV, logout, restart, new-classroom isolation, legacy migration, and real HTTP SSE.
+## Two-process, 500-student real HTTP load
 
-Before submission, direct peer list, search, and pagination requests are denied. Submitting one topic does not unlock another. Student state contains only personal work and aggregate counts; teachers can still read all records.
+`npm run test:load` starts two independent Node processes against one isolated PostgreSQL schema. Requests alternate between processes, using 500 distinct cookies. It runs 500 simultaneous joins and two bursts of 500 submissions while polling every 2.5–3.5 seconds, followed by 60 seconds with all 500 users online. It also checks expected 403 sharing gates, lists, topic progression, moderation, and session recovery after restarting both processes.
 
-A local Fastify injection test simulates 150 participants sharing an outbound address, completing 300 valid submissions as the teacher progresses. Pagination retrieves all records. This is not a target school-network capacity limit.
+Results below use local loopback networking and cannot establish capacity for Coze's 1-core/2-GB replicas:
 
-API tests verify link stability after restart and preservation of the original classroom for legacy links with a `code` parameter. Unknown or missing classroom links are rejected. Session, response-list, and submission requests bind to the visited classroom to avoid cross-classroom tab confusion.
+| Operation | Requests | P95 (ms) | P99 (ms) |
+| --- | ---: | ---: | ---: |
+| join | 500 | 212 | 214 |
+| submit-discover | 500 | 167 | 168 |
+| submit-design | 500 | 124 | 132 |
+| poll | 10135 | 5 | 47 |
+| board | 500 | 173 | 185 |
 
-Deletion checks cover combined topic, school, and keyword filtering; batches of up to 50; denial for students and unauthenticated visitors; and rejection of cross-classroom IDs, missing IDs, duplicates, oversized selections, and cross-origin writes without partial changes. Deletion clears database content to `{}` and excludes it from teacher/student lists, search, counts, and CSV. Authors receive a removal marker; resubmission and restoration requests cannot recover the original text, including after restart. A 52-response case verifies pagination after the last page is deleted, and real HTTP SSE verifies deletion notifications. Current submission data no longer contains the original response text, so future word clouds can use cleaned lists or CSV exports. Word clouds are not implemented in this update.
+13688 requests, 0 unexpected errors; peak 523 in flight.
 
-## Connection failure and recovery checks
+Expected sharing-gate 403 responses are not errors. After removing one design response, counts must be 500 participants, 500 discovery responses, and 499 design responses. All 1,000 submissions were retained; the removed response keeps only its receipt. The test runner only accepts local database addresses.
 
-Real HTTP checks verify the teacher SSE handshake, streaming/no-cache/no-compression headers, a heartbeat after 20 seconds, denial for students and unauthenticated visitors, and stream closure on logout. Clock-controlled tests cover silent streams reopening after 45 seconds, stale events being ignored, heartbeat retention, reconnect refreshes, cleanup, and unavailable EventSource support. HTTPS proxy sharing uses the browser origin unless PUBLIC_URL is configured. Separate-database classroom IDs are rejected without silently joining the current classroom.
+## Browser workflow and recovery
 
-For the 0.4.1 release, `test/browser/connection.js` deliberately held both teacher and student event requests while allowing normal APIs. Both pages show periodic synchronization, teacher records receive student submissions, and students follow topic changes without refreshing. State-request failures then produce an offline status; restoring requests returns first to polling and then to live synchronization. A missing classroom remains isolated and the correct fixed link reuses the student identity. The script passed without page exceptions. Deliberately aborted network requests produce expected console resource errors. Version 0.4.2 does not change connection recovery, so the fault-injection browser script was not repeated; automated connection tests and the normal full workflow passed again without console errors.
+`test/browser/flow.js` passed on the PostgreSQL QA service: one teacher and two isolated student contexts, stable-link copying, master switch, automatic design progression, independent topic gates, draft recovery, peer updates, filtering, single/bulk moderation reflected for authors and peers, ending, and new-classroom isolation. Desktop 1366 × 768 and landscape tablet 1024 × 768 retain side-by-side content; 1920 × 1080 has no page overflow. No page exceptions or console errors.
 
-No production URL or deployment method was supplied during this update, so the actual online proxy and data-volume configuration were not inspected. Local fault simulation does not establish the specific production cause.
+`test/browser/auth.js` passed: blocked cookies produce a clear teacher error and only one student join attempt. An HTTP 200 HTML proxy error preserves the teacher workspace, shows interrupted connectivity, and recovers on valid responses. PostgreSQL mode makes zero SSE requests. The initial simulation needed correction for `route.fetch` updating test cookies and the student-message locator; corrected checks passed without product changes.
 
-## School list and upgrade
+SQLite SSE authentication, notification, handshake, heartbeat, logout cleanup, and silent-connection recovery remain covered by automated tests. The older SSE fault browser script was not rerun; shared-storage operation does not depend on SSE.
 
-The six schools preserve the user's exact names and order; see the README. Earlier isolated checks confirmed that all six can submit and the old placeholder is rejected. This update continues to test server-side school validation.
+## Coze development database retest and migration
 
-The migration test starts from the old schema and retains the classroom, identity, and submitted work, verifying that two open legacy switches select design. The new deletion field defaults to null, so existing work stays visible. The local preview was also stopped, backed up, upgraded, and restarted, retaining its original classroom and demonstration responses. Deletion tests use only isolated QA data.
+The first actual Coze PostgreSQL run passed 39 checks and failed one concurrent-join check. After removing classroom-row write contention, the case expanded to 500 participants and 1,000 submissions: all 40 checks passed in about 64.7 seconds, with the burst case taking about 10.8 seconds. These use injected application requests and the real cloud database, not the production gateway. Development preview health reports version 0.5.0 with PostgreSQL/polling; the original teacher password signs in, and refresh preserves the workspace. Standalone teacher/student Coze development tabs also passed waiting, discovery, advancing an unsubmitted student to design, closing into waiting, and reopening automatically; sharing stayed locked before submission in both topics.
 
-## Browser workflow
+After a complete backup and transactional import, all original fields matched across seven classrooms, 343 participant identities, 16 responses, 11 teacher sessions, and two metadata entries. Classroom IDs, password, and removal receipts were preserved. These are migration-time counts; subsequent browser checks can create ordinary sessions or anonymous participants.
 
-One teacher page and two isolated student browser contexts completed `test/browser/flow.js`, verifying:
+## Deployment evidence and limits
 
-1. The copy button returns the correct fixed link, including the fallback when the Clipboard API is unavailable. Students enter automatically without a code field or a join button, and the root path opens teacher sign-in, or the workspace for an authenticated teacher. An existing student identity does not join a new classroom through the root path. The login page has no generic student-entry link, and root visits create no student identity or extra participant. Students automatically wait when the page is closed. Opening the master switch shows the waiting stage; selecting discovery automatically displays both student forms without reloads.
-2. Unsubmitted students only see a lock notice. They still cannot see peer work after another participant submits. The submitter sees a forum-style list on the right.
-3. Pausing disables unsubmitted forms and shows all students a pause notice, while unlocked responses remain readable. Resuming permits writing again.
-4. Selecting design automatically moves both students to the second page, including the student who did not submit discovery. That student can submit design directly, retaining the school/name draft.
-5. Discovery and design unlock independently. After both students submit the same topic they can read each other, and new responses appear automatically.
-6. Returning to discovery restores unsent drafts, including after a reload. A student who submitted design first reuses the saved identity in discovery, but must submit discovery to unlock its responses.
-7. Reloads restore submitted records. Name search filters correctly, and clearing the search restores all rows.
-8. Closing the master switch hides forms and peer responses; reopening restores the current topic. Ending shows the closing screen to both students while teachers retain records.
-9. The teacher link remains unchanged after all controls and ending. New visitors to an ended link see the closing screen without receiving a student identity. After creating a new classroom, old links still show their original closing screen even with a new-classroom cookie, and repeat visits do not inflate the new classroom’s participant count.
-10. A 1366 × 768 computer viewport and a 1024 × 768 landscape tablet retain the split layout. A 1920 × 1080 display has no page overflow. Computer-room desktops are the primary target; narrow phones are not receiving dedicated adaptation.
-11. Teacher school and content filters combine correctly, and changing filters clears selected rows. The confirmation dialog names selected students and states that deletion cannot be undone; cancellation preserves records. Single deletion removes the text from its author and peers automatically. Bulk deletion clears both responses in the other topic, while returning to the first topic retains its undeleted response. Students have no deletion controls.
-12. Visible text on login, teacher workspace, student waiting, activity, submitted, and ended pages contains no classroom code. Students still enter automatically through the fixed link.
+Inspected the user's open Coze project: 1 core/2 GB, maximum two instances, concurrency 100 per instance; the old production command stored SQLite in `/tmp/ai-classroom-data`. The database panel was empty. A development PostgreSQL database was created, and standard PG connection-variable injection was confirmed after reconnecting. Connection passwords were not read or recorded.
 
-The full script passed without page exceptions or console errors. The root-to-teacher login screenshot was inspected, and the full workflow continues to cover teacher/student desktop and tablet layouts. Local screenshots and script output are under `output/playwright/` and excluded from Git. The local preview now runs 0.4.2 with root-to-teacher entry. Its original fixed link, teacher password, student identities, and responses were verified unchanged.
+Separate SQLite replicas failing to recognize each other's sessions were reproduced locally; the deployment configuration matches that mechanism. An earlier top-level production sign-in succeeded at the time, so the intermittent production failure was not directly captured. Preview iframe cookies can also be blocked; successful curl requests do not eliminate replica-state problems.
+
+Production migration requires confirming the retention scope and backing up or importing data before deployment. Production acceptance with 500 students on Coze remains outstanding. Local short-duration load cannot establish full-lesson stability, gateway behavior, school networking, or cloud-database latency. Docker, Nginx, and physical devices were not validated this round. Narrow phones are not a target.
 
 ## Reproduction
 
-Run `npm ci` and `npm run build` first, and ensure port 3219 is free. Run the browser script only against the isolated QA server: it starts a new classroom, submits demonstration records, and deletes them. Port 3218 remains available for the regular preview.
-
 ```bash
-node scripts/qa-server.js
+npm run check
+# Isolated PostgreSQL only. Supply local credentials safely; never commit them.
+TEST_DATABASE_URL=postgresql://127.0.0.1:55439/classroom_test npm run check
+TEST_DATABASE_URL=postgresql://127.0.0.1:55439/classroom_test LOAD_HOLD_MS=60000 npm run test:load
 ```
 
-In another terminal, use Playwright CLI:
+Browser QA uses a separate database and port 3219, never a formal classroom:
 
 ```bash
-npx --yes --package @playwright/cli playwright-cli -s=workshop-check open http://127.0.0.1:3219/teacher --headed
+DATABASE_URL=postgresql://127.0.0.1:55439/classroom_test DATABASE_SCHEMA=browser_test node scripts/qa-server.js
+npx --yes --package @playwright/cli playwright-cli -s=workshop-check open http://127.0.0.1:3219/teacher
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/flow.js
-npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/connection.js
+npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/auth.js
 ```
 
-The QA service uses an isolated `output/qa-*` data directory and an explicit test-only password. Do not use it for an actual classroom. See the [README](README.en.md) for normal operation.
-
-## Unverified scope
-
-No school server deployment, actual classroom capacity or duration acceptance, wireless network validation, external reverse proxy validation, or physical tablet/display test was performed. Size checks use Chromium viewport simulation. Docker and Nginx files are examples, not runtime-verified deployments. Official school naming conventions were not independently checked. There are no external model calls or model-quality acceptance results.
+Committed sanitized [HTTP load evidence](deploy/evidence/load-2026-09-23.json) corresponds to commit `6d511e9`. The [check summary](deploy/evidence/validation-2026-09-23.json) also records environment and migration verification. See the [investigation](deploy/DEBUGGING_2026-09-23.en.md) for failures and fixes. Full raw ignored artifacts: `output/load-test/result.json`, `output/check-v050-*.log`, `output/browser-auth-v050.log`, and `output/playwright/`. See [Coze deployment](deploy/coze.en.md) for migration and rollback.

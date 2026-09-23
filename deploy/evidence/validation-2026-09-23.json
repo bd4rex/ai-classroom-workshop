@@ -1,0 +1,107 @@
+{
+  "date": "2026-09-23",
+  "version": "0.5.0",
+  "productionAccepted": false,
+  "checks": {
+    "localPostgres": {
+      "tests": 40,
+      "pass": 40,
+      "fail": 0,
+      "skipped": 0
+    },
+    "localSqlite": {
+      "tests": 40,
+      "pass": 37,
+      "fail": 0,
+      "skipped": 3
+    },
+    "browserFlow": {
+      "passed": true,
+      "actors": "one teacher, two isolated student contexts",
+      "checks": [
+        "root opens teacher page without student enrollment",
+        "no classroom code in visible teacher/student pages",
+        "school and keyword filters",
+        "selection reset on filter change",
+        "single delete with cancel",
+        "permanent single and batch deletion",
+        "live removal from author and peer pages",
+        "fixed link copy",
+        "copy fallback without Clipboard API",
+        "automatic entry without code",
+        "stable link after controls",
+        "old link isolation",
+        "page gate",
+        "waiting",
+        "automatic topic sync",
+        "skip first submission",
+        "per-topic unlock",
+        "draft recovery",
+        "live peer rows",
+        "pause/resume",
+        "end",
+        "search",
+        "responsive layout",
+        "no console errors"
+      ],
+      "desktop": {
+        "width": 1366,
+        "scrollWidth": 1366,
+        "sideBySide": true
+      },
+      "tablet": {
+        "width": 1024,
+        "scrollWidth": 1024,
+        "sideBySide": true
+      },
+      "large": {
+        "width": 1920,
+        "scrollWidth": 1920
+      }
+    },
+    "browserAuth": {
+      "passed": true,
+      "cookieBlockedLogin": "explicit-error",
+      "cookieBlockedStudent": "one-join-only",
+      "invalidResponse": "preserves-session-and-recovers",
+      "eventRequests": 0
+    },
+    "cozeDevelopmentPostgres": {
+      "recording": "manually transcribed from platform terminal, not a production gateway test",
+      "testedCommit": "6d511e9065072025c7597be7540cc21335ec2444",
+      "tests": 40,
+      "pass": 40,
+      "fail": 0,
+      "durationMs": 64724.288,
+      "burstParticipants": 500,
+      "burstSubmissions": 1000,
+      "burstDurationMs": 10821.528
+    },
+    "cozeDevelopmentMigration": {
+      "recording": "counts and full-source-field equality transcribed from platform terminal before browser checks",
+      "allSourceFieldsMatch": true,
+      "counts": {
+        "rooms": 7,
+        "teachers": 11,
+        "participants": 343,
+        "submissions": 16,
+        "meta": 2
+      }
+    },
+    "cozeDevelopmentBrowser": {
+      "recording": "observed using standalone browser tabs; no response content submitted",
+      "passed": true,
+      "checks": [
+        "original teacher password",
+        "refresh retains session",
+        "stable student link",
+        "waiting",
+        "discovery",
+        "unsubmitted student follows design",
+        "topic sharing remains locked",
+        "close shows waiting",
+        "reopen resumes design"
+      ]
+    }
+  }
+}

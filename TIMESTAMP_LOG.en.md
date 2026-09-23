@@ -2,6 +2,26 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+
+## 2026-09-23 14:08 · Coze validation, contention fix, and committed deployment records
+
+- Initial actual Coze PostgreSQL validation passed 39 checks and failed one concurrent-join check. Commit `6d511e9` removed the shared classroom-row hotspot, using append-only response-change receipts; joins no longer write a response version, and connection acquisition allows 10 seconds. Expanded 500-user/1,000-response coverage then passed all 40 checks and the build on Coze.
+- Latest local two-process HTTP load: 13,688 requests, zero unexpected errors. Join/discovery/design P95 latency: 212/167/124 ms; polling P95: 5 ms. This establishes only the tested environment, not production capacity.
+- Coze development SQLite was stopped, fully backed up, and imported into PostgreSQL. All source fields matched for seven classrooms, 343 participants, 16 responses, sessions, and metadata. Development health shows 0.5.0/PostgreSQL/polling; the original password signs in, refresh retains the workspace, and the stable student link opens the original waiting classroom. Production was not overwritten with development data.
+- Local preview was backed up and upgraded to 0.5.0; original classroom, password, identities, and two responses matched. Local, cloud-development, and formal-production datasets remain separate.
+- At the user's request, committed bilingual deployment/incident records preserve failed attempts, diagnosis, fixes, retests, commands, migration order, rollback, and outstanding work. Added a credential-free Coze template and sanitized machine-readable load evidence. Development watching is restricted to server/config to avoid Vite restart loops.
+- Production release remains pending clarification of formal-data and distributed-link retention. Production has not been switched or tested with 500 users. Append actual production outcomes later; local/development tests cannot substitute for them.
+
+## 2026-09-23 13:30 · Shared database and 500-student support
+
+- Version 0.5.0 adds PostgreSQL sessions, classroom state, and submissions shared across replicas, including standard Coze PG variables. Multi-instance operation polls every 2.5–3.5 seconds; local SQLite remains supported. Bounded pools, transactions, control revisions, and student locks coordinate writes.
+- Sign-in verifies the saved session. Invalid JSON preserves the signed-in workspace; blocked cookies produce explicit guidance without repeated student joins. List revisions and less frequent session-expiry writes reduce load. Multiple PUBLIC_URL origins are supported upstream.
+- SQLite migration supports read-only inspection and transactional empty-target import with count verification, preserving IDs, hashes, sessions, identities, and removal receipts. Existing targets are never overwritten.
+- PostgreSQL: 40 tests passed. SQLite: 37 passed, three specialized checks skipped. Production build and complete browser workflow passed, including cookie/proxy fault checks. Production dependency audit: zero vulnerabilities.
+- Two separate local processes handled 500 student identities, two bursts of 500 submissions, 60 seconds of polling, cross-instance removal, and both-process restart recovery. See validation results for latency and request counts; these do not establish Coze production capacity.
+- Inspected the user's Coze project: 2 instances × concurrency 100, SQLite under /tmp. Created development PostgreSQL and confirmed PG-variable injection. Production retention scope still needs the user's answer; production has not switched and no online 500-user load was sent.
+- Updated paired documentation, validation, migration/deployment guidance, and this log. Databases, secrets, test artifacts, screenshots, and backups stay out of Git.
+
 ## 2026-09-23 12:01 · Root entry now opens the teacher page
 
 - Version 0.4.2 redirects the default root path `/` to `/teacher`, showing sign-in for unauthenticated visitors and the workspace for signed-in teachers. Students enter through the fixed link distributed by their teacher; root visits no longer select the current classroom or create a student identity.
