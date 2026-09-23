@@ -3,6 +3,13 @@
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
 
+## 2026-09-23 14:16 · Verified main merge and environment handoff
+
+- [PR #1](https://github.com/bd4rex/ai-classroom-workshop/pull/1) merged at 2026-09-23 14:14 Asia/Shanghai as `5a7857e105fc84d5928c40bc2fa69705c882cbce`. GitHub returned `MERGED`; remote main was fetched and fast-forwarded locally. Repository visibility is public. Later documentation-only handoff commits are reflected by remote main.
+- Separate Coze development teacher/student tabs passed original-password login, refresh, stable links, waiting→discovery→direct design, and close→waiting→reopen. No new response content was submitted; the classroom was restored to its original waiting stage.
+- Local preview on 3218 restarted with final runtime code; the complete backup and original data digest matched. Isolated 3219 QA, dedicated local PostgreSQL, and the test browser were stopped. Formal classroom data was not cleared.
+- This version is not yet published to Coze production. Confirm retention of production records/old links before migration, publication, and acceptance. Development status is not production completion. README links the migration procedure, template, incident record, and sanitized evidence.
+
 ## 2026-09-23 14:08 · Coze validation, contention fix, and committed deployment records
 
 - Initial actual Coze PostgreSQL validation passed 39 checks and failed one concurrent-join check. Commit `6d511e9` removed the shared classroom-row hotspot, using append-only response-change receipts; joins no longer write a response version, and connection acquisition allows 10 seconds. Expanded 500-user/1,000-response coverage then passed all 40 checks and the build on Coze.
