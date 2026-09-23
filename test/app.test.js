@@ -542,11 +542,11 @@ test("开始新课隔离旧学生和控制请求，旧记录仍保留", async (t
   );
 });
 
-test("150 个同出口参与端随老师完成 300 次提交，分页和搜索完整", async (t) => {
+test("500 个同出口参与端随老师完成 1000 次提交，分页和搜索完整", async (t) => {
   const f = await fixture(t);
   await f.start();
   const students = await Promise.all(
-    Array.from({ length: 150 }, () => f.student()),
+    Array.from({ length: 500 }, () => f.student()),
   );
   await Promise.all(
     students.map(async (s, i) =>
@@ -569,16 +569,16 @@ test("150 个同出口参与端随老师完成 300 次提交，分页和搜索�
     ),
   );
   assert.deepEqual(await f.app.store.counts(), {
-    joined: 150,
-    discover: 150,
-    design: 150,
+    joined: 500,
+    discover: 500,
+    design: 500,
   });
   const ids = new Set();
-  for (let page = 1; page <= 3; page++) {
+  for (let page = 1; page <= 10; page++) {
     const result = (
       await f.board(students[0], "design", `&page=${page}`)
     ).json();
-    assert.equal(result.total, 150);
+    assert.equal(result.total, 500);
     assert.equal(result.rows.length, 50);
     result.rows.forEach((r) => {
       assert.equal(r.token, undefined);
@@ -586,7 +586,7 @@ test("150 个同出口参与端随老师完成 300 次提交，分页和搜索�
       ids.add(r.id);
     });
   }
-  assert.equal(ids.size, 150);
+  assert.equal(ids.size, 500);
   const filtered = (
     await f.board(students[0], "design", "&q=" + encodeURIComponent("同学001"))
   ).json();

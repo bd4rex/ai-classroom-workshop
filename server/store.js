@@ -72,7 +72,9 @@ export async function createStore(directory, options = {}) {
   }
   async function room(id) {
     const value = await get(
-      "SELECT * FROM rooms WHERE id=?",
+      db.dialect === "postgres"
+        ? "SELECT r.*, (SELECT COUNT(*) FROM room_changes c WHERE c.room_id=r.id) AS data_revision FROM rooms r WHERE id=?"
+        : "SELECT * FROM rooms WHERE id=?",
       id ?? (await meta("current")),
     );
     if (!value) return null;
@@ -101,8 +103,12 @@ export async function createStore(directory, options = {}) {
       next.id,
     );
   }
+  // Append-only change receipts avoid serializing every student on one room row.
+  // COUNT observes late commits too; MAX(sequence) alone could miss them.
   const touch = (id) =>
-    run("UPDATE rooms SET data_revision=data_revision+1 WHERE id=?", id);
+    db.dialect === "postgres"
+      ? run("INSERT INTO room_changes (room_id) VALUES (?)", id)
+      : run("UPDATE rooms SET data_revision=data_revision+1 WHERE id=?", id);
   async function counts(id) {
     id ??= await meta("current");
     const rows = await all(

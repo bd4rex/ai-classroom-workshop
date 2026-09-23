@@ -455,7 +455,6 @@ export async function buildApp({
       hash(value),
       Date.now() + 86400000,
     );
-    await store.touch(room.id);
     setCookie(reply, "workshop_student", value);
     broadcast();
     return {

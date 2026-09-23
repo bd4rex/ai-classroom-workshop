@@ -15,7 +15,7 @@ export async function openDatabase(directory, options = {}) {
     const pool = new pg.Pool({
       connectionString: options.connectionString,
       max: options.poolSize || 10,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
       statement_timeout: 10000,
       options: `-c search_path=${schema}`,
@@ -99,6 +99,9 @@ export async function openDatabase(directory, options = {}) {
             created_at BIGINT NOT NULL, stage TEXT NOT NULL DEFAULT 'waiting',
             page_open INTEGER NOT NULL DEFAULT 0, paused INTEGER NOT NULL DEFAULT 0,
             revision INTEGER NOT NULL DEFAULT 0, data_revision INTEGER NOT NULL DEFAULT 0);
+          CREATE TABLE IF NOT EXISTS room_changes (
+            id BIGSERIAL PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id));
+          CREATE INDEX IF NOT EXISTS room_changes_room ON room_changes(room_id);
           CREATE TABLE IF NOT EXISTS teachers (token TEXT PRIMARY KEY, expires BIGINT NOT NULL);
           CREATE TABLE IF NOT EXISTS participants (
             id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), token TEXT UNIQUE NOT NULL,

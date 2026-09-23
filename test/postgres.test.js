@@ -71,6 +71,33 @@ test(
         .statusCode,
       404,
     );
+    let releaseLate, entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise((resolve) => {
+      releaseLate = resolve;
+    });
+    const late = a.store.transaction(async () => {
+      await a.store.touch(room.id);
+      entered();
+      await held;
+    });
+    await started;
+    try {
+      await b.store.transaction(() => b.store.touch(room.id));
+      const firstVersion = (await b.store.room()).dataRevision;
+      releaseLate();
+      await late;
+      assert.equal(
+        (await b.store.room()).dataRevision,
+        firstVersion + 1,
+        "晚提交的变化必须继续刷新列表",
+      );
+    } finally {
+      releaseLate();
+      await late;
+    }
     await req(b, "POST", "/api/logout", {}, session);
     assert.deepEqual(
       (
