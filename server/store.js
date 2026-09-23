@@ -1,7 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
 import { randomUUID, createHash } from "node:crypto";
-import { mkdirSync, chmodSync, readFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { openDatabase } from "./database.js";
 
 export class AppError extends Error {
   constructor(message, statusCode = 400) {
@@ -22,91 +22,59 @@ export function loadSchools(file) {
   return [...new Set(schools.map((school) => str(school, "学校", 100)))];
 }
 
-export function createStore(directory) {
-  const root = resolve(directory);
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  const file = join(root, "classroom.sqlite");
-  const db = new DatabaseSync(file);
-  chmodSync(file, 0o600);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS rooms (
-      id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL,
-      discover_open INTEGER NOT NULL DEFAULT 0, design_open INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS teachers (token TEXT PRIMARY KEY, expires INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS participants (
-      id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), token TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL DEFAULT '', school TEXT NOT NULL DEFAULT '', expires INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL REFERENCES rooms(id),
-      participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design')),
-      content TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(participant_id,kind));
-    CREATE INDEX IF NOT EXISTS participants_room ON participants(room_id);
-    CREATE INDEX IF NOT EXISTS submissions_room ON submissions(room_id,kind,id);`);
-  // Upgrade the original independent switches without dropping rooms or answers.
-  if (
-    !db
-      .prepare("PRAGMA table_info(rooms)")
-      .all()
-      .some((column) => column.name === "stage")
-  ) {
-    db.exec(`BEGIN IMMEDIATE;
-      ALTER TABLE rooms ADD COLUMN stage TEXT NOT NULL DEFAULT 'waiting';
-      ALTER TABLE rooms ADD COLUMN page_open INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE rooms ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE rooms ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
-      UPDATE rooms SET page_open=CASE WHEN discover_open=1 OR design_open=1 THEN 1 ELSE 0 END,
-        stage=CASE WHEN design_open=1 THEN 'design' WHEN discover_open=1 THEN 'discover' ELSE 'waiting' END;
-      COMMIT;`);
-  }
-  if (
-    !db
-      .prepare("PRAGMA table_info(submissions)")
-      .all()
-      .some((column) => column.name === "deleted_at")
-  ) {
-    db.exec("ALTER TABLE submissions ADD COLUMN deleted_at INTEGER");
-  }
-  const get = (sql, ...values) => db.prepare(sql).get(...values);
-  const all = (sql, ...values) => db.prepare(sql).all(...values);
-  const run = (sql, ...values) => db.prepare(sql).run(...values);
-  const meta = (key) => {
-    const entry = get("SELECT value FROM meta WHERE key=?", key);
+export async function createStore(directory, options = {}) {
+  const db = await openDatabase(directory, options);
+  const { get, all, run } = db;
+  const active = new AsyncLocalStorage();
+  const transaction = (fn, options) =>
+    active.getStore()
+      ? fn()
+      : db.transaction(() => active.run(true, fn), options);
+  const meta = async (key) => {
+    const entry = await get("SELECT value FROM meta WHERE key=?", key);
     return entry ? JSON.parse(entry.value) : null;
   };
   const setMeta = (key, value) =>
-    run("INSERT OR REPLACE INTO meta VALUES (?,?)", key, JSON.stringify(value));
-  function transaction(fn) {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const result = fn();
-      db.exec("COMMIT");
-      return result;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    run(
+      "INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      key,
+      JSON.stringify(value),
+    );
+  async function lockCurrent(exclusive = false) {
+    if (!active.getStore()) throw new Error("课堂锁必须在事务中获取");
+    await get(
+      `SELECT key FROM meta WHERE key='current'${db.dialect === "postgres" ? (exclusive ? " FOR UPDATE" : " FOR SHARE") : ""}`,
+    );
   }
-  function newRoom() {
-    return transaction(() => {
-      run(
+  async function lockParticipant(id) {
+    if (!active.getStore()) throw new Error("学生锁必须在事务中获取");
+    await get(
+      `SELECT id FROM participants WHERE id=?${db.dialect === "postgres" ? " FOR UPDATE" : ""}`,
+      id,
+    );
+  }
+  async function newRoom() {
+    return transaction(async () => {
+      await lockCurrent(true);
+      await run(
         "UPDATE rooms SET discover_open=0,design_open=0,page_open=0,stage='ended',paused=1,revision=revision+1",
       );
       const id = randomUUID();
-      // Keep the legacy column for previously shared URLs; new rooms use their ID.
-      run(
+      await run(
         "INSERT INTO rooms (id,code,created_at) VALUES (?,?,?)",
         id,
         id,
         Date.now(),
       );
-      setMeta("current", id);
-      return room();
+      await setMeta("current", id);
+      return room(id);
     });
   }
-  function room(id = meta("current")) {
-    const value = get("SELECT * FROM rooms WHERE id=?", id);
+  async function room(id) {
+    const value = await get(
+      "SELECT * FROM rooms WHERE id=?",
+      id ?? (await meta("current")),
+    );
     if (!value) return null;
     return {
       id: value.id,
@@ -114,6 +82,7 @@ export function createStore(directory) {
       pageOpen: !!value.page_open,
       paused: !!value.paused,
       revision: value.revision,
+      dataRevision: value.data_revision,
       discoverOpen:
         !!value.page_open && !value.paused && value.stage === "discover",
       designOpen:
@@ -121,8 +90,8 @@ export function createStore(directory) {
       createdAt: value.created_at,
     };
   }
-  function control(next) {
-    run(
+  async function control(next) {
+    await run(
       "UPDATE rooms SET stage=?,page_open=?,paused=?,revision=revision+1,discover_open=?,design_open=? WHERE id=?",
       next.stage,
       Number(next.pageOpen),
@@ -132,21 +101,36 @@ export function createStore(directory) {
       next.id,
     );
   }
-  function counts() {
-    const id = meta("current");
+  const touch = (id) =>
+    run("UPDATE rooms SET data_revision=data_revision+1 WHERE id=?", id);
+  async function counts(id) {
+    id ??= await meta("current");
+    const rows = await all(
+      "SELECT kind,COUNT(*) n FROM submissions WHERE room_id=? AND deleted_at IS NULL GROUP BY kind",
+      id,
+    );
     return {
-      joined: get("SELECT COUNT(*) n FROM participants WHERE room_id=?", id).n,
-      discover: get(
-        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='discover' AND deleted_at IS NULL",
-        id,
+      joined: (
+        await get("SELECT COUNT(*) n FROM participants WHERE room_id=?", id)
       ).n,
-      design: get(
-        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='design' AND deleted_at IS NULL",
-        id,
-      ).n,
+      discover: rows.find((r) => r.kind === "discover")?.n || 0,
+      design: rows.find((r) => r.kind === "design")?.n || 0,
     };
   }
-  if (!meta("current")) newRoom();
+  async function initialize(passwordFactory) {
+    return transaction(async () => {
+      if (db.dialect === "postgres")
+        await get("SELECT pg_advisory_xact_lock(741924)");
+      let generated = null;
+      if (!(await meta("password")) && passwordFactory) {
+        const created = await passwordFactory();
+        await setMeta("password", created.hash);
+        generated = created.password;
+      }
+      if (!(await meta("current"))) await newRoom();
+      return generated;
+    });
+  }
   return {
     get,
     all,
@@ -158,6 +142,11 @@ export function createStore(directory) {
     newRoom,
     counts,
     transaction,
-    close: () => db.close(),
+    lockCurrent,
+    lockParticipant,
+    touch,
+    initialize,
+    dialect: db.dialect,
+    close: db.close,
   };
 }

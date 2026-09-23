@@ -1,4 +1,6 @@
 import test from "node:test";
+import pg from "pg";
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,6 +41,13 @@ function request(app, method, url, payload, session, extra = {}) {
   });
 }
 async function fixture(t, options = {}) {
+  if (process.env.TEST_DATABASE_URL && options.databaseUrl !== "")
+    options = {
+      databaseUrl: process.env.TEST_DATABASE_URL,
+      databaseSchema: `test_${randomUUID().replaceAll("-", "")}`,
+      ...options,
+    };
+  options.usePostgres = Boolean(options.databaseUrl);
   const dataDir = mkdtempSync(join(tmpdir(), "ai-workshop-test-"));
   let app = await buildApp({
     dataDir,
@@ -48,6 +57,14 @@ async function fixture(t, options = {}) {
   });
   t.after(async () => {
     await app.close();
+    if (options.databaseUrl) {
+      const pool = new pg.Pool({ connectionString: options.databaseUrl });
+      try {
+        await pool.query(`DROP SCHEMA "${options.databaseSchema}" CASCADE`);
+      } finally {
+        await pool.end();
+      }
+    }
     rmSync(dataDir, { recursive: true, force: true });
   });
   const teacher = cookie(
@@ -55,13 +72,13 @@ async function fixture(t, options = {}) {
   );
   const student = async () => {
     const r = await request(app, "POST", "/api/join", {
-      classroomId: app.store.room().id,
+      classroomId: (await app.store.room()).id,
     });
     assert.equal(r.statusCode, 200, r.body);
     return cookie(r);
   };
   const control = async (change) => {
-    const room = app.store.room();
+    const room = await app.store.room();
     const r = await request(
       app,
       "POST",
@@ -91,13 +108,13 @@ async function fixture(t, options = {}) {
     start,
     submit,
     board,
-    moderate: (ids, action = "delete", session = teacher, extra = {}) =>
+    moderate: async (ids, action = "delete", session = teacher, extra = {}) =>
       request(
         app,
         "POST",
         "/api/teacher/submissions/moderate",
         {
-          roomId: app.store.room().id,
+          roomId: (await app.store.room()).id,
           ids,
           action,
           ...extra,
@@ -145,7 +162,7 @@ test("教师鉴权、固定课堂链接、学生隔离和同源写入", async (t
         f.app,
         "POST",
         "/api/join",
-        { classroomId: f.app.store.room().id },
+        { classroomId: (await f.app.store.room()).id },
         undefined,
         { "x-classroom-request": "" },
       )
@@ -158,7 +175,7 @@ test("教师鉴权、固定课堂链接、学生隔离和同源写入", async (t
         f.app,
         "POST",
         "/api/join",
-        { classroomId: f.app.store.room().id },
+        { classroomId: (await f.app.store.room()).id },
         undefined,
         { origin: "https://unrelated.example" },
       )
@@ -184,8 +201,8 @@ test("教师鉴权、固定课堂链接、学生隔离和同源写入", async (t
 test("页面总开关与课前等候阻止提交和读取同学分享", async (t) => {
   const f = await fixture(t),
     s = await f.student();
-  assert.equal(f.app.store.room().pageOpen, false);
-  assert.equal(f.app.store.room().stage, "waiting");
+  assert.equal((await f.app.store.room()).pageOpen, false);
+  assert.equal((await f.app.store.room()).stage, "waiting");
   assert.equal((await f.submit(s, "discover", discovery())).statusCode, 409);
   assert.equal((await f.board(s)).statusCode, 403);
   await f.control({ action: "stage", stage: "discover" });
@@ -315,7 +332,7 @@ test("结束课堂关闭学生写入和分享，老师保留记录且不能重�
   await f.start();
   await f.submit(a, "discover", discovery());
   await f.control({ action: "end" });
-  assert.equal(f.app.store.room().stage, "ended");
+  assert.equal((await f.app.store.room()).stage, "ended");
   assert.equal((await f.submit(b, "discover", discovery())).statusCode, 409);
   assert.equal((await f.board(a)).statusCode, 403);
   assert.equal(
@@ -323,12 +340,12 @@ test("结束课堂关闭学生写入和分享，老师保留记录且不能重�
     1,
   );
   const lateJoin = await request(f.app, "POST", "/api/join", {
-    classroomId: f.app.store.room().id,
+    classroomId: (await f.app.store.room()).id,
   });
   assert.equal(lateJoin.statusCode, 200);
   assert.deepEqual(lateJoin.json(), { state: null, ended: true });
   assert.equal(lateJoin.headers["set-cookie"], undefined);
-  const room = f.app.store.room();
+  const room = await f.app.store.room();
   assert.equal(
     (
       await request(
@@ -356,7 +373,7 @@ test("重复并发提交与关闭后的成功请求重试不重复计数", async
     Array.from({ length: 10 }, () => f.submit(a, "discover", discovery())),
   );
   responses.forEach((r) => assert.equal(r.statusCode, 200));
-  assert.equal(f.app.store.counts().discover, 1);
+  assert.equal((await f.app.store.counts()).discover, 1);
   await f.control({ action: "page", open: false });
   assert.equal(
     (await f.submit(a, "discover", discovery())).json().repeated,
@@ -384,7 +401,7 @@ test("学校、必填、长度及身份变更由服务端校验", async (t) => {
       (await f.submit(a, "discover", { ...discovery(), ...patch })).statusCode,
       400,
     );
-  assert.equal(f.app.store.counts().discover, 0);
+  assert.equal((await f.app.store.counts()).discover, 0);
   assert.equal((await f.submit(a, "unknown", {})).statusCode, 404);
   await f.submit(a, "discover", discovery());
   await f.control({ action: "stage", stage: "design" });
@@ -398,7 +415,7 @@ test("学校、必填、长度及身份变更由服务端校验", async (t) => {
 
 test("过期的教师控制请求不能覆盖新的课堂节奏", async (t) => {
   const f = await fixture(t);
-  const stale = f.app.store.room();
+  const stale = await f.app.store.room();
   await f.start();
   assert.equal(
     (
@@ -417,8 +434,8 @@ test("过期的教师控制请求不能覆盖新的课堂节奏", async (t) => {
     ).statusCode,
     409,
   );
-  assert.equal(f.app.store.room().stage, "discover");
-  const current = f.app.store.room();
+  assert.equal((await f.app.store.room()).stage, "discover");
+  const current = await f.app.store.room();
   assert.equal(
     (
       await request(
@@ -446,9 +463,9 @@ test("重启恢复课堂主题、暂停状态、身份、登录和两份记录",
   await f.control({ action: "stage", stage: "design" });
   await f.submit(a, "design", design);
   await f.control({ action: "pause", paused: true });
-  const room = f.app.store.room();
+  const room = await f.app.store.room();
   await f.restart();
-  assert.deepEqual(f.app.store.room(), room);
+  assert.deepEqual(await f.app.store.room(), room);
   const state = (
     await request(f.app, "GET", "/api/student/state", undefined, a)
   ).json();
@@ -469,7 +486,7 @@ test("重启恢复课堂主题、暂停状态、身份、登录和两份记录",
 test("开始新课隔离旧学生和控制请求，旧记录仍保留", async (t) => {
   const f = await fixture(t),
     a = await f.student(),
-    old = f.app.store.room();
+    old = await f.app.store.room();
   await f.start();
   await f.submit(a, "discover", discovery());
   assert.equal(
@@ -497,17 +514,20 @@ test("开始新课隔离旧学生和控制请求，旧记录仍保留", async (t
     ).statusCode,
     200,
   );
-  assert.notEqual(f.app.store.room().id, old.id);
-  assert.equal(f.app.store.room().stage, "waiting");
-  assert.equal(f.app.store.room().pageOpen, false);
+  assert.notEqual((await f.app.store.room()).id, old.id);
+  assert.equal((await f.app.store.room()).stage, "waiting");
+  assert.equal((await f.app.store.room()).pageOpen, false);
   assert.equal(
     (await request(f.app, "GET", "/api/student/state", undefined, a))
       .statusCode,
     401,
   );
   assert.equal((await f.board(a)).statusCode, 401);
-  assert.equal(f.app.store.counts().discover, 0);
-  assert.equal(f.app.store.get("SELECT COUNT(*) n FROM submissions").n, 1);
+  assert.equal((await f.app.store.counts()).discover, 0);
+  assert.equal(
+    (await f.app.store.get("SELECT COUNT(*) n FROM submissions")).n,
+    1,
+  );
   assert.equal(
     (
       await request(
@@ -548,7 +568,7 @@ test("150 个同出口参与端随老师完成 300 次提交，分页和搜索�
       assert.equal((await f.submit(s, "design", design)).statusCode, 200),
     ),
   );
-  assert.deepEqual(f.app.store.counts(), {
+  assert.deepEqual(await f.app.store.counts(), {
     joined: 150,
     discover: 150,
     design: 150,
@@ -695,7 +715,8 @@ test("删除清除正文并隐藏学生内容、搜索、数量和导出，重�
   assert.ok(!csv.body.includes(answer.scenario));
   assert.ok(csv.body.includes("乙同学"));
   assert.equal(
-    f.app.store.get("SELECT content FROM submissions WHERE id=?", id).content,
+    (await f.app.store.get("SELECT content FROM submissions WHERE id=?", id))
+      .content,
     "{}",
   );
   await f.restart();
@@ -709,7 +730,8 @@ test("删除清除正文并隐藏学生内容、搜索、数量和导出，重�
   assert.equal(restarted.submissions.discover.removed, true);
   assert.equal(restarted.counts.discover, 1);
   assert.equal(
-    f.app.store.get("SELECT content FROM submissions WHERE id=?", id).content,
+    (await f.app.store.get("SELECT content FROM submissions WHERE id=?", id))
+      .content,
     "{}",
   );
   assert.equal(
@@ -725,7 +747,7 @@ test("批量管理校验教师权限、同源、数量和课堂归属，错误�
   await f.start();
   await f.submit(oldStudent, "discover", discovery("旧课堂"));
   const oldId = (await f.board(oldStudent)).json().rows[0].id;
-  const oldRoomId = f.app.store.room().id;
+  const oldRoomId = (await f.app.store.room()).id;
   await f.control({ action: "page", open: false });
   await request(
     f.app,
@@ -765,7 +787,7 @@ test("批量管理校验教师权限、同源、数量和课堂归属，错误�
         "POST",
         "/api/teacher/submissions/moderate",
         {
-          roomId: f.app.store.room().id,
+          roomId: (await f.app.store.room()).id,
           ids: [id],
           action: "delete",
         },
@@ -777,14 +799,20 @@ test("批量管理校验教师权限、同源、数量和课堂归属，错误�
   );
   assert.equal((await f.board(s)).json().total, 1);
   assert.equal(
-    f.app.store.get(
-      "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+    (
+      await f.app.store.get(
+        "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+      )
     ).n,
     0,
   );
   assert.equal(
-    f.app.store.get("SELECT deleted_at FROM submissions WHERE id=?", oldId)
-      .deleted_at,
+    (
+      await f.app.store.get(
+        "SELECT deleted_at FROM submissions WHERE id=?",
+        oldId,
+      )
+    ).deleted_at,
     null,
   );
 });
@@ -826,12 +854,18 @@ test("批量删除只清除选中记录的正文，分页在删除末页后回�
     0,
   );
   assert.equal(
-    f.app.store.get("SELECT COUNT(*) n FROM submissions WHERE content!='{}'").n,
+    (
+      await f.app.store.get(
+        "SELECT COUNT(*) n FROM submissions WHERE content!='{}'",
+      )
+    ).n,
     0,
   );
   assert.equal(
-    f.app.store.get(
-      "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+    (
+      await f.app.store.get(
+        "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+      )
     ).n,
     52,
   );
@@ -872,7 +906,7 @@ test("CSV 导出包含中文、换行和两阶段记录，并转义公式", asyn
 test("学生不能控制课堂，教师退出后会话失效", async (t) => {
   const f = await fixture(t),
     s = await f.student(),
-    room = f.app.store.room();
+    room = await f.app.store.room();
   assert.equal(
     (
       await request(
@@ -914,12 +948,13 @@ test("学校配置可替换，错误配置使服务停止启动", async (t) => {
   const app = await buildApp({
     dataDir: dir,
     schoolsFile: file,
+    usePostgres: false,
     serveStatic: false,
     initialPassword: password,
   });
   try {
     const r = await request(app, "POST", "/api/join", {
-      classroomId: app.store.room().id,
+      classroomId: (await app.store.room()).id,
     });
     assert.deepEqual(r.json().state.schools, ["第一学校", "第二学校"]);
   } finally {
@@ -966,14 +1001,15 @@ test("旧数据库迁移保留课堂、学生与作品，两个旧开关同时�
   db.close();
   const app = await buildApp({
     dataDir,
+    usePostgres: false,
     serveStatic: false,
     initialPassword: password,
   });
   try {
-    assert.equal(app.store.room().id, "legacy-room");
-    assert.equal(app.store.room().stage, "design");
-    assert.equal(app.store.room().pageOpen, true);
-    assert.equal(app.store.room().discoverOpen, false);
+    assert.equal((await app.store.room()).id, "legacy-room");
+    assert.equal((await app.store.room()).stage, "design");
+    assert.equal((await app.store.room()).pageOpen, true);
+    assert.equal((await app.store.room()).discoverOpen, false);
     const state = (
       await request(
         app,
@@ -986,10 +1022,10 @@ test("旧数据库迁移保留课堂、学生与作品，两个旧开关同时�
     assert.equal(state.me.name, "旧同学");
     assert.equal(state.submissions.discover.scenario, "保留的旧作品");
     assert.equal(
-      app.store.get("SELECT deleted_at FROM submissions").deleted_at,
+      (await app.store.get("SELECT deleted_at FROM submissions")).deleted_at,
       null,
     );
-    assert.equal(app.store.counts().discover, 1);
+    assert.equal((await app.store.counts()).discover, 1);
     assert.equal("code" in state.room, false);
   } finally {
     await app.close();
@@ -1000,7 +1036,7 @@ test(
   "真实 HTTP SSE 通知提交、删除及主题切换，断线后的状态仍受阅读门槛保护",
   { timeout: 15000 },
   async (t) => {
-    const f = await fixture(t),
+    const f = await fixture(t, { databaseUrl: "" }),
       a = await f.student(),
       b = await f.student();
     await f.start();
@@ -1058,7 +1094,7 @@ test(
   "教师实时连接通过鉴权后立即发送事件及心跳，注销时关闭连接",
   { timeout: 30000 },
   async (t) => {
-    const f = await fixture(t),
+    const f = await fixture(t, { databaseUrl: "" }),
       student = await f.student();
     await f.app.listen({ port: 0, host: "127.0.0.1" });
     const base = `http://127.0.0.1:${f.app.server.address().port}`;
@@ -1111,7 +1147,7 @@ test("HTTPS 代理下分享使用浏览器实际地址，固定 PUBLIC_URL 优�
   );
   assert.equal(
     share.json().url,
-    `https://classroom.example.edu/classroom/${f.app.store.room().id}`,
+    `https://classroom.example.edu/classroom/${(await f.app.store.room()).id}`,
   );
   for (const origin of [
     "javascript:alert(1)",
@@ -1143,25 +1179,28 @@ test("HTTPS 代理下分享使用浏览器实际地址，固定 PUBLIC_URL 优�
   );
   assert.equal(
     result.json().url,
-    `https://students.example.edu/classroom/${fixed.app.store.room().id}`,
+    `https://students.example.edu/classroom/${(await fixed.app.store.room()).id}`,
   );
 });
 
 test("另一份数据库生成的课堂链接不会被悄悄替换为当前课堂", async (t) => {
   const source = await fixture(t),
     deployed = await fixture(t);
-  const originalId = source.app.store.room().id;
+  const originalId = (await source.app.store.room()).id;
   const invalid = await request(deployed.app, "POST", "/api/join", {
     classroomId: originalId,
   });
   assert.equal(invalid.statusCode, 404);
   assert.match(invalid.json().error, /当前网站找不到这节课堂/);
-  assert.equal(deployed.app.store.counts().joined, 0);
+  assert.equal((await deployed.app.store.counts()).joined, 0);
   const valid = await request(deployed.app, "POST", "/api/join", {
-    classroomId: deployed.app.store.room().id,
+    classroomId: (await deployed.app.store.room()).id,
   });
   assert.equal(valid.statusCode, 200);
-  assert.equal(valid.json().state.room.id, deployed.app.store.room().id);
+  assert.equal(
+    valid.json().state.room.id,
+    (await deployed.app.store.room()).id,
+  );
 });
 
 test("固定学生链接在反复复制、切换、暂停、关闭、结束和服务重启后保持不变", async (t) => {
@@ -1180,11 +1219,11 @@ test("固定学生链接在反复复制、切换、暂停、关闭、结束和�
   const first = await share();
   assert.equal(
     new URL(first.url).pathname,
-    `/classroom/${f.app.store.room().id}`,
+    `/classroom/${(await f.app.store.room()).id}`,
   );
   assert.equal(new URL(first.url).search, "");
   assert.match(first.qr, /^data:image\/png;base64,/);
-  assert.equal(f.app.store.room().code, undefined);
+  assert.equal((await f.app.store.room()).code, undefined);
   for (const url of ["/", "/?source=shared"]) {
     for (const session of [undefined, f.teacher]) {
       const root = await request(f.app, "GET", url, undefined, session);
@@ -1194,7 +1233,7 @@ test("固定学生链接在反复复制、切换、暂停、关闭、结束和�
       assert.equal(root.headers["set-cookie"], undefined);
     }
   }
-  assert.equal(f.app.store.counts().joined, 0);
+  assert.equal((await f.app.store.counts()).joined, 0);
   for (const change of [
     { action: "page", open: true },
     { action: "stage", stage: "discover" },
@@ -1212,7 +1251,7 @@ test("固定学生链接在反复复制、切换、暂停、关闭、结束和�
 
 test("按链接自动加入复用身份，无效链接和结束链接不创建参与者", async (t) => {
   const f = await fixture(t),
-    classroomId = f.app.store.room().id;
+    classroomId = (await f.app.store.room()).id;
   for (const payload of [
     {},
     { code: "123456" },
@@ -1225,20 +1264,20 @@ test("按链接自动加入复用身份，无效链接和结束链接不创建�
       404,
     );
   }
-  assert.equal(f.app.store.counts().joined, 0);
+  assert.equal((await f.app.store.counts()).joined, 0);
   const first = await request(f.app, "POST", "/api/join", { classroomId });
   const s = cookie(first);
   assert.equal(first.json().state.room.id, classroomId);
   const again = await request(f.app, "POST", "/api/join", { classroomId }, s);
   assert.equal(again.json().state.me.id, first.json().state.me.id);
   assert.equal(cookie(again), s);
-  assert.equal(f.app.store.counts().joined, 1);
+  assert.equal((await f.app.store.counts()).joined, 1);
   await f.control({ action: "end" });
   assert.deepEqual(
     (await request(f.app, "POST", "/api/join", { classroomId })).json(),
     { state: null, ended: true },
   );
-  assert.equal(f.app.store.counts().joined, 1);
+  assert.equal((await f.app.store.counts()).joined, 1);
   assert.equal(
     (await request(f.app, "POST", "/api/join", { classroomId }, s)).json().state
       .room.stage,
@@ -1248,7 +1287,7 @@ test("按链接自动加入复用身份，无效链接和结束链接不创建�
 
 test("创建新课堂后旧链接仍显示结束，已有新课堂 Cookie 也不能串入旧链接", async (t) => {
   const f = await fixture(t),
-    old = f.app.store.room();
+    old = await f.app.store.room();
   const oldStudent = await f.student();
   await f.start();
   await f.submit(oldStudent, "discover", discovery());
@@ -1262,7 +1301,7 @@ test("创建新课堂后旧链接仍显示结束，已有新课堂 Cookie 也不
   );
   const current = next.json().room;
   assert.notEqual(current.id, old.id);
-  assert.equal(f.app.store.room(old.id).stage, "ended");
+  assert.equal((await f.app.store.room(old.id)).stage, "ended");
   const s = await f.student();
   await f.start();
   await f.submit(s, "discover", discovery("新课堂学生"));
@@ -1283,7 +1322,7 @@ test("创建新课堂后旧链接仍显示结束，已有新课堂 Cookie 也不
   );
   assert.deepEqual(oldJoin.json(), { state: null, ended: true });
   assert.equal(oldJoin.headers["set-cookie"], undefined);
-  assert.equal(f.app.store.counts().joined, 1);
+  assert.equal((await f.app.store.counts()).joined, 1);
   assert.equal(
     (await f.board(s, "discover", `&classroomId=${old.id}`)).statusCode,
     401,
@@ -1308,13 +1347,16 @@ test("创建新课堂后旧链接仍显示结束，已有新课堂 Cookie 也不
     s,
   );
   assert.equal(currentSession.json().state.me.name, "新课堂学生");
-  assert.equal(f.app.store.get("SELECT COUNT(*) n FROM submissions").n, 2);
+  assert.equal(
+    (await f.app.store.get("SELECT COUNT(*) n FROM submissions")).n,
+    2,
+  );
 });
 
 test("旧版已经发出的链接自动跳到原课堂，新课堂和重启不改变对应关系", async (t) => {
   const f = await fixture(t),
-    old = f.app.store.room();
-  f.app.store.run("UPDATE rooms SET code=? WHERE id=?", "123456", old.id);
+    old = await f.app.store.room();
+  await f.app.store.run("UPDATE rooms SET code=? WHERE id=?", "123456", old.id);
   const resolve = () => request(f.app, "GET", "/?code=123456");
   assert.equal((await resolve()).headers.location, `/classroom/${old.id}`);
   await request(

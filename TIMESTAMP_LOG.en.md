@@ -2,6 +2,17 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+
+## 2026-09-23 13:30 · Shared database and 500-student support
+
+- Version 0.5.0 adds PostgreSQL sessions, classroom state, and submissions shared across replicas, including standard Coze PG variables. Multi-instance operation polls every 2.5–3.5 seconds; local SQLite remains supported. Bounded pools, transactions, control revisions, and student locks coordinate writes.
+- Sign-in verifies the saved session. Invalid JSON preserves the signed-in workspace; blocked cookies produce explicit guidance without repeated student joins. List revisions and less frequent session-expiry writes reduce load. Multiple PUBLIC_URL origins are supported upstream.
+- SQLite migration supports read-only inspection and transactional empty-target import with count verification, preserving IDs, hashes, sessions, identities, and removal receipts. Existing targets are never overwritten.
+- PostgreSQL: 40 tests passed. SQLite: 37 passed, three specialized checks skipped. Production build and complete browser workflow passed, including cookie/proxy fault checks. Production dependency audit: zero vulnerabilities.
+- Two separate local processes handled 500 student identities, two bursts of 500 submissions, 60 seconds of polling, cross-instance removal, and both-process restart recovery. See validation results for latency and request counts; these do not establish Coze production capacity.
+- Inspected the user's Coze project: 2 instances × concurrency 100, SQLite under /tmp. Created development PostgreSQL and confirmed PG-variable injection. Production retention scope still needs the user's answer; production has not switched and no online 500-user load was sent.
+- Updated paired documentation, validation, migration/deployment guidance, and this log. Databases, secrets, test artifacts, screenshots, and backups stay out of Git.
+
 ## 2026-09-23 12:01 · Root entry now opens the teacher page
 
 - Version 0.4.2 redirects the default root path `/` to `/teacher`, showing sign-in for unauthenticated visitors and the workspace for signed-in teachers. Students enter through the fixed link distributed by their teacher; root visits no longer select the current classroom or create a student identity.

@@ -68,6 +68,14 @@ function useClassroom(role, classroomId) {
         if (!active) return;
         if (role === "student" && !result.state) {
           result = await api("/api/join", { classroomId });
+          if (result.state) {
+            const saved = await api(`/api/session?${query}`);
+            if (!saved.state)
+              throw new Error(
+                "浏览器未保存课堂身份，请在独立标签页打开老师分享的链接。",
+              );
+            result = saved;
+          }
         }
         if (active) {
           setState(result.state);
@@ -90,6 +98,8 @@ function useClassroom(role, classroomId) {
     };
   }, [role, classroomId]);
   const authenticated = !!state;
+  const syncMode = state?.sync?.mode || "sse";
+  const intervalMs = state?.sync?.intervalMs || 6000;
   useEffect(() => {
     if (!authenticated) return;
     const query = new URLSearchParams({
@@ -97,11 +107,14 @@ function useClassroom(role, classroomId) {
       ...(role === "student" ? { classroomId } : {}),
     });
     const update = () => queue.current.update();
-    const stopEvents = watchClassroomEvents(`/api/events?${query}`, {
-      onLive: setConnected,
-      onUpdate: update,
-    });
-    const timer = setInterval(update, 6000 + Math.random() * 1500);
+    const stopEvents =
+      syncMode === "sse"
+        ? watchClassroomEvents(`/api/events?${query}`, {
+            onLive: setConnected,
+            onUpdate: update,
+          })
+        : () => {};
+    const timer = setInterval(update, intervalMs + Math.random() * 1000);
     const visible = () => {
       if (document.visibilityState === "visible") update();
     };
@@ -112,7 +125,7 @@ function useClassroom(role, classroomId) {
       document.removeEventListener("visibilitychange", visible);
       setConnected(false);
     };
-  }, [authenticated, role, classroomId]);
+  }, [authenticated, role, classroomId, syncMode, intervalMs]);
   return {
     state,
     loading,
@@ -173,7 +186,9 @@ function Header({ teacher, state, connection, onLogout }) {
             role="status"
             title={
               connection === "polling"
-                ? "当前每 6–8 秒自动同步；实时连接恢复后会自动切回。"
+                ? state.sync?.mode === "polling"
+                  ? "课堂每 2.5–3.5 秒自动同步。"
+                  : "当前每 6–8 秒自动同步；实时连接恢复后会自动切回。"
                 : undefined
             }
           >
@@ -214,6 +229,11 @@ function TeacherEntry({ refresh }) {
     setError("");
     try {
       await api("/api/login", { password: value });
+      const session = await api("/api/session?role=teacher");
+      if (!session.state)
+        throw new Error(
+          "密码已验证，但登录会话未建立。请在独立标签页打开教师地址；若仍失败，请检查共享数据库配置。",
+        );
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -1021,7 +1041,7 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
   }, [role, kind, page, filter, school, state.room.id]);
   useEffect(() => {
     refresh.current?.();
-  }, [state]);
+  }, [state.room.id, state.room.revision, state.room.dataRevision ?? state]);
   return (
     <section
       className={`board ${student ? "forum-board" : ""}`}
