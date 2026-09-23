@@ -34,6 +34,7 @@ The user reported successful password entry followed by a signed-out view, inter
 
 - Existing terminals did not receive PG variables immediately after database creation. Reconnect the sandbox and open a new terminal; inspect variable presence, then test `pg.Pool()`. Never print full environment values or connection strings.
 - Character-based Web terminal input collapsed a multiline heredoc. Cancel incomplete input and use a single-line command; an unfinished input is not evidence of migration or validation.
+- The temporary verification checkout tracked only the feature branch. `git fetch origin main` updated `FETCH_HEAD` without creating `origin/main`, so the first archive attempt failed with `not a valid object name` and did not replace workspace files. Use `git archive FETCH_HEAD -o /tmp/workshop-upstream.tar`, then extract only after success, avoiding pipelines that mask earlier failures. Preserve platform `.coze`, environment files, private handoff rules, and data separately.
 - `pg` warned of future changes to some `sslmode` semantics. Current connection/tests passed; TLS and certificate checks were not disabled. Recheck platform TLS requirements on driver upgrades, rather than setting `rejectUnauthorized: false`.
 - Development must use `--watch-path=./server --watch-path=./config`, avoiding a bare `--watch` reacting to Vite temporary files and causing restart loops. This constraint is included in the upstream development command and Coze template.
 

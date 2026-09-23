@@ -34,6 +34,7 @@
 
 - 创建数据库后，旧终端尚未取得新注入的 PG 环境变量。重连开发沙箱、打开新终端后，检查变量名称的存在性，再用 `pg.Pool()` 验证连接。不要通过输出完整环境变量或连接串排查。
 - Web 终端的逐字输入会把多行 heredoc 拼到一行。退出未完成输入后改用单行命令；没有完成执行的输入不计作迁移或验证成功。
+- 临时验证目录是功能分支的单分支检出，`git fetch origin main` 只更新 `FETCH_HEAD`，没有创建 `origin/main`；第一次归档因此报 `not a valid object name`，未覆盖工作区。同步改用 `git archive FETCH_HEAD -o /tmp/workshop-upstream.tar`，成功后才解包，避免管道末端掩盖前一步失败。平台的 `.coze`、环境文件、私有交接规则和数据需单独保留。
 - `pg` 提示未来版本对某些 `sslmode` 的语义将变化。当前连接和测试成功；未关闭 TLS 或证书验证。升级 `pg` 时重新核对平台 TLS 配置，不能为消除警告设置 `rejectUnauthorized: false`。
 - 开发进程需限定 `--watch-path=./server --watch-path=./config`，不能用裸 `--watch` 监听 Vite 临时文件，避免构建与重启互相触发。本次将相同约束纳入上游 `npm run dev` 和扣子配置模板。
 
