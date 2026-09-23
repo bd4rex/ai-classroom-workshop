@@ -2,6 +2,16 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-09-23 10:47 · Response filtering and permanent deletion
+
+- Version 0.4.0: teachers can combine topic, school, name, and content filters, delete one response, or select up to 50 responses on the current page for bulk deletion. Confirmation lists selected names and states that deletion is irreversible; filter or page changes clear selections.
+- The user clarified that deletion should remove inappropriate submissions and keep data clean for future word clouds. Deletion clears response content, retaining only a marker against resubmission. Teacher/student lists, search, response counts, and CSV exclude deleted work. Authors receive a removal notice and peer pages update automatically. Word clouds are not implemented in this release.
+- Neither teacher nor student pages display classroom codes. Students enter automatically through the existing fixed link; link copying and old-classroom isolation remain intact.
+- Validation: all 29 automated tests and the production build passed. One teacher and two isolated student browser contexts completed combined filters, deletion cancellation, single and bulk content clearing, live author/peer removal, existing lesson controls, and desktop/tablet/display layouts without page exceptions or console errors. All dependency versions are unchanged.
+- The local preview was stopped, fully backed up, and upgraded to 0.4.0. Classroom state, teacher password, student identities, and the existing two responses were verified unchanged. Teacher/student previews were refreshed and the fixed link was preserved. Deletion tests used only the isolated QA service.
+- Chinese and English README, validation report, and handoff log are updated together. Runtime data, passwords, screenshots, and backups stay out of Git. Repository: `bd4rex/ai-classroom-workshop`, branch `main`; use `git log -1` and the remote branch for this release's commit.
+- The original Tongpin Classroom Feedback workspace remains clean at `f597af64b2ac199ba69dd6eb301ba5317027c64a`. No school server was operated on in this update.
+
 ## 2026-09-22 · Independent simplification and local validation
 
 - Source: `bd4rex/tongpin-classroom-feedback`, `main`, baseline `f597af64b2ac199ba69dd6eb301ba5317027c64a`. Only source and configuration were read; the original working tree remains clean.

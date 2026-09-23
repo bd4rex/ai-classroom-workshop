@@ -60,6 +60,14 @@ export function createStore(directory) {
         stage=CASE WHEN design_open=1 THEN 'design' WHEN discover_open=1 THEN 'discover' ELSE 'waiting' END;
       COMMIT;`);
   }
+  if (
+    !db
+      .prepare("PRAGMA table_info(submissions)")
+      .all()
+      .some((column) => column.name === "deleted_at")
+  ) {
+    db.exec("ALTER TABLE submissions ADD COLUMN deleted_at INTEGER");
+  }
   const get = (sql, ...values) => db.prepare(sql).get(...values);
   const all = (sql, ...values) => db.prepare(sql).all(...values);
   const run = (sql, ...values) => db.prepare(sql).run(...values);
@@ -129,11 +137,11 @@ export function createStore(directory) {
     return {
       joined: get("SELECT COUNT(*) n FROM participants WHERE room_id=?", id).n,
       discover: get(
-        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='discover'",
+        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='discover' AND deleted_at IS NULL",
         id,
       ).n,
       design: get(
-        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='design'",
+        "SELECT COUNT(*) n FROM submissions WHERE room_id=? AND kind='design' AND deleted_at IS NULL",
         id,
       ).n,
     };

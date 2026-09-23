@@ -13,12 +13,14 @@ async (page) => {
   const locked = (p) => p.getByRole("heading", { name: "先写下你的想法", exact: true });
   const post = (p, name) => p.getByRole("article", { name: `${name}的分享`, exact: true });
   const submit = (p) => button(p, "提交并查看同学分享");
+  const noClassroomCode = async (p) => check(!(await p.locator("body").innerText()).includes("课堂码"), "页面仍显示课堂码");
   const pauseText = "老师暂停了填写，先听一听大家的想法。已解锁的分享仍可阅读。";
   watch(page);
   await page.goto(base + "/teacher");
   const password = page.getByRole("textbox", { name: "教师密码", exact: true });
   const gate = page.getByRole("switch", { name: "课堂页面开关", exact: true });
   await password.or(gate).first().waitFor();
+  await noClassroomCode(page);
   if (await password.isVisible()) {
     await password.fill("isolated-browser-test-only");
     await button(page, "进入教师工作台").click();
@@ -35,7 +37,7 @@ async (page) => {
   }, oldLink);
   const link = await page.getByRole("textbox", { name: "学生加入链接" }).inputValue();
   check(link.startsWith(base + "/classroom/") && !link.includes("?"), "没有使用固定课堂路径");
-  check(await page.getByRole("textbox", { name: "课堂码", exact: true }).count() === 0, "教师页仍显示课堂码");
+  await noClassroomCode(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await button(page, "复制学生端链接").click();
   await button(page, "链接已复制").waitFor();
@@ -50,7 +52,7 @@ async (page) => {
       await p.goto(p === a ? base + "/" : link);
       await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
       check(p.url() === link, "学生没有停留在课堂固定链接");
-      check(await p.getByRole("textbox", { name: "课堂码", exact: true }).count() === 0, "学生仍需填写课堂码");
+      await noClassroomCode(p);
       check(await button(p, "加入课堂").count() === 0, "学生仍需手动加入");
     }
     await gate.click();
@@ -71,7 +73,7 @@ async (page) => {
     await b.reload();
     await field(b, "领域").waitFor();
     check(await field(b, "领域").inputValue() === "校园学习草稿", "刷新丢失草稿");
-    await b.screenshot({ path: "output/playwright/student-locked-tablet-v3.png", fullPage: true });
+    await b.screenshot({ path: "output/playwright/student-locked-tablet-v4.png", fullPage: true });
     await submit(a).click();
     await post(a, "小禾（演示）").waitFor();
     check(await locked(b).isVisible() && await post(b, "小禾（演示）").count() === 0, "未提交者看到同学内容");
@@ -112,6 +114,67 @@ async (page) => {
     check(await post(a, "小禾（演示）").count() === 1, "搜索结果不完整");
     await search.fill("");
     await post(a, "小宇（演示）").waitFor();
+    const teacherRow = (name) => page.getByRole("row").filter({ hasText: name });
+    const schoolFilter = page.getByRole("combobox", { name: "按学校筛选", exact: true });
+    const teacherSearch = page.getByRole("textbox", { name: "搜索同学分享", exact: true });
+    const chooseAll = page.getByRole("checkbox", { name: "选择本页全部提交", exact: true });
+    await teacherRow("小宇（演示）").waitFor();
+    await schoolFilter.selectOption({ index: 1 });
+    await teacherRow("小宇（演示）").waitFor({ state: "hidden" });
+    await teacherRow("小禾（演示）").waitFor();
+    await teacherSearch.fill("小宇");
+    await page.getByText("没有找到匹配的内容", { exact: true }).waitFor();
+    await teacherSearch.fill("导航");
+    await teacherRow("小禾（演示）").waitFor();
+    await chooseAll.check();
+    await page.getByText("已选 1 份", { exact: true }).waitFor();
+    await schoolFilter.selectOption("");
+    await page.getByText("已选 0 份", { exact: true }).waitFor();
+    check(!await button(page, "删除所选").isEnabled(), "筛选变化后保留了隐藏选择");
+    await teacherSearch.fill("");
+    await teacherRow("小宇（演示）").waitFor();
+    const deleteDialog = page.getByRole("dialog", { name: "确认删除提交", exact: true });
+    await button(page, "删除小禾（演示）的提交").click();
+    await deleteDialog.waitFor();
+    check((await deleteDialog.innerText()).includes("小禾（演示）"), "删除确认缺少选中姓名");
+    check((await deleteDialog.innerText()).includes("删除后不可恢复"), "删除确认没有说明永久清除");
+    await deleteDialog.getByRole("button", { name: "取消", exact: true }).click();
+    check(await teacherRow("小禾（演示）").isVisible(), "取消删除仍删除了记录");
+    await button(page, "删除小禾（演示）的提交").click();
+    await deleteDialog.getByRole("button", { name: "确认删除", exact: true }).click();
+    await page.getByText("已删除 1 份提交，作品正文已清除。", { exact: true }).waitFor();
+    for (const p of [a, b]) await post(p, "小禾（演示）").waitFor({ state: "hidden" });
+    const removedText = "本主题作品已被老师移除";
+    await a.getByText(removedText, { exact: true }).waitFor();
+    check(!(await a.locator("body").innerText()).includes("导航根据实时路况推荐路线，避开拥堵。"), "作者页面仍泄露已删除内容");
+    await teacherRow("小禾（演示）").waitFor({ state: "hidden" });
+    await teacherRow("小宇（演示）").waitFor();
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.screenshot({ path: "output/playwright/teacher-after-delete-v4.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-removed-v4.png", fullPage: true });
+    await page.getByRole("tab", { name: /一起设计/ }).click();
+    await teacherRow("小禾（演示）").waitFor();
+    await teacherRow("小宇（演示）").waitFor();
+    await chooseAll.check();
+    await page.getByText("已选 2 份", { exact: true }).waitFor();
+    await button(page, "删除所选").click();
+    await deleteDialog.getByRole("button", { name: "确认删除", exact: true }).click();
+    await page.getByText("已删除 2 份提交，作品正文已清除。", { exact: true }).waitFor();
+    await button(page, "切换到一起设计").click();
+    for (const p of [a, b]) {
+      await p.getByText(removedText, { exact: true }).waitFor();
+      await post(p, "小禾（演示）").waitFor({ state: "hidden" });
+      await post(p, "小宇（演示）").waitFor({ state: "hidden" });
+    }
+    await button(page, "切换到一起发现").click();
+    for (const p of [a, b]) {
+      await post(p, "小宇（演示）").waitFor();
+      check(await post(p, "小禾（演示）").count() === 0, "切回主题后已删除作品重新出现");
+      check(await button(p, "删除所选").count() === 0, "学生端出现管理操作");
+      await noClassroomCode(p);
+    }
+    await teacherRow("小宇（演示）").waitFor();
+    await noClassroomCode(page);
     const desktop = await a.evaluate(() => {
       const [left, right] = [...document.querySelectorAll(".student-split > *")].map((el) => el.getBoundingClientRect());
       return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, sideBySide: right.x >= left.right && right.y === left.y };
@@ -123,13 +186,13 @@ async (page) => {
     check(desktop.sideBySide && desktop.width === desktop.scrollWidth, "桌面左右布局或宽度错误");
     check(tablet.sideBySide && tablet.width === tablet.scrollWidth, "平板横屏左右布局或宽度错误");
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.screenshot({ path: "output/playwright/teacher-desktop-v3.png", fullPage: true });
-    await a.screenshot({ path: "output/playwright/student-desktop-v3.png", fullPage: true });
-    await b.screenshot({ path: "output/playwright/student-tablet-v3.png", fullPage: true });
+    await page.screenshot({ path: "output/playwright/teacher-desktop-v4.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-desktop-v4.png", fullPage: true });
+    await b.screenshot({ path: "output/playwright/student-tablet-v4.png", fullPage: true });
     await a.setViewportSize({ width: 1920, height: 1080 });
     const large = await a.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
     check(large.width === large.scrollWidth, "大屏页面横向溢出");
-    await a.screenshot({ path: "output/playwright/student-large-v3.png", fullPage: true });
+    await a.screenshot({ path: "output/playwright/student-large-v4.png", fullPage: true });
     await gate.click();
     for (const p of [a, b]) {
       await p.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
@@ -139,7 +202,10 @@ async (page) => {
     await post(a, "小宇（演示）").waitFor();
     await button(page, "结束本节课").click();
     await button(page, "确认结束课堂").click();
-    for (const p of [a, b]) await p.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+    for (const p of [a, b]) {
+      await p.getByRole("heading", { name: "本节课堂已结束", exact: true }).waitFor();
+      await noClassroomCode(p);
+    }
     check(await page.getByRole("row").filter({ hasText: "小宇（演示）" }).count() === 1, "结束后教师记录丢失");
     check(await page.getByRole("textbox", { name: "学生加入链接" }).inputValue() === link, "课堂节奏改变了链接");
     const fresh = await browser.newContext();
@@ -174,6 +240,6 @@ async (page) => {
     await b.getByRole("heading", { name: "课堂页面暂未开放", exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector(".classroom-stats strong")?.textContent === "1");
     check(problems.length === 0, JSON.stringify(problems));
-    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["fixed link copy", "copy fallback without Clipboard API", "automatic entry without code", "stable link after controls", "old link isolation", "page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
+    return { passed: true, actors: "one teacher, two isolated student contexts", checks: ["no classroom code in visible teacher/student pages", "school and keyword filters", "selection reset on filter change", "single delete with cancel", "permanent single and batch deletion", "live removal from author and peer pages", "fixed link copy", "copy fallback without Clipboard API", "automatic entry without code", "stable link after controls", "old link isolation", "page gate", "waiting", "automatic topic sync", "skip first submission", "per-topic unlock", "draft recovery", "live peer rows", "pause/resume", "end", "search", "responsive layout", "no console errors"], desktop, tablet, large };
   } finally { await ca.close(); await cb.close(); }
 }

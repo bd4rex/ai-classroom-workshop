@@ -8,9 +8,10 @@ import { buildApp } from "../server/app.js";
 import { hash } from "../server/store.js";
 
 const password = "isolated-test-password-only";
-const school = JSON.parse(
+const schools = JSON.parse(
   readFileSync(new URL("../config/schools.json", import.meta.url), "utf8"),
-)[0];
+);
+const school = schools[0];
 const profile = (name = "测试同学") => ({ name, school });
 const discovery = (name = "测试同学") => ({
   ...profile(name),
@@ -89,6 +90,19 @@ async function fixture(t) {
     start,
     submit,
     board,
+    moderate: (ids, action = "delete", session = teacher, extra = {}) =>
+      request(
+        app,
+        "POST",
+        "/api/teacher/submissions/moderate",
+        {
+          roomId: app.store.room().id,
+          ids,
+          action,
+          ...extra,
+        },
+        session,
+      ),
     restart: async () => {
       await app.close();
       app = await buildApp({
@@ -562,6 +576,265 @@ test("150 个同出口参与端随老师完成 300 次提交，分页和搜索�
   );
 });
 
+test("教师按主题、学校和关键词组合筛选，删除后任何列表均不返回原内容", async (t) => {
+  const f = await fixture(t),
+    a = await f.student(),
+    b = await f.student(),
+    c = await f.student();
+  await f.start();
+  await f.submit(a, "discover", discovery("甲同学"));
+  await f.submit(b, "discover", { ...discovery("乙同学"), school: schools[1] });
+  await f.submit(c, "discover", {
+    ...discovery("丙同学"),
+    scenario: "植物识别",
+  });
+  await f.control({ action: "stage", stage: "design" });
+  await f.submit(a, "design", design);
+  await f.control({ action: "stage", stage: "discover" });
+  const filtered = (
+    await f.board(
+      f.teacher,
+      "discover",
+      `&role=teacher&school=${encodeURIComponent(school)}&q=${encodeURIComponent("公交")}`,
+    )
+  ).json();
+  assert.deepEqual(
+    filtered.rows.map((row) => row.name),
+    ["甲同学"],
+  );
+  assert.equal(
+    (await f.board(f.teacher, "design", "&role=teacher")).json().total,
+    1,
+  );
+  const id = filtered.rows[0].id;
+  assert.equal((await f.moderate([id])).statusCode, 200);
+  assert.equal(
+    (await f.board(f.teacher, "discover", "&role=teacher")).json().total,
+    2,
+  );
+  const removed = (
+    await f.board(
+      f.teacher,
+      "discover",
+      `&role=teacher&school=${encodeURIComponent(school)}&q=${encodeURIComponent("甲同学")}`,
+    )
+  ).json();
+  assert.equal(removed.total, 0);
+  for (const query of [
+    "&status=deleted",
+    "&role=teacher&status=deleted",
+    `&school=${encodeURIComponent(school)}`,
+  ])
+    assert.ok(
+      [401, 403].includes((await f.board(a, "discover", query)).statusCode),
+    );
+  assert.equal(
+    (await f.board(f.teacher, "discover", "&role=teacher&status=unknown"))
+      .statusCode,
+    400,
+  );
+});
+
+test("删除清除正文并隐藏学生内容、搜索、数量和导出，重启后也不能重交或恢复", async (t) => {
+  const f = await fixture(t),
+    a = await f.student(),
+    b = await f.student(),
+    locked = await f.student();
+  await f.start();
+  const answer = { ...discovery("甲同学"), scenario: "应隐藏的独有内容" };
+  await f.submit(a, "discover", answer);
+  await f.submit(b, "discover", discovery("乙同学"));
+  const id = (
+    await f.board(a, "discover", `&q=${encodeURIComponent("甲同学")}`)
+  ).json().rows[0].id;
+  assert.deepEqual((await f.moderate([id])).json(), { ok: true, changed: 1 });
+  assert.equal((await f.moderate([id])).json().changed, 0);
+  for (const session of [a, b]) {
+    const list = await f.board(session);
+    assert.equal(list.json().total, 1);
+    assert.ok(!list.body.includes(answer.scenario));
+    assert.equal(
+      (
+        await f.board(
+          session,
+          "discover",
+          `&q=${encodeURIComponent(answer.scenario)}`,
+        )
+      ).json().total,
+      0,
+    );
+  }
+  assert.equal((await f.board(locked)).statusCode, 403);
+  const beforeRestart = await request(
+    f.app,
+    "GET",
+    "/api/student/state",
+    undefined,
+    a,
+  );
+  const saved = beforeRestart.json().submissions.discover;
+  assert.deepEqual(Object.keys(saved).sort(), ["createdAt", "removed"]);
+  assert.equal(saved.removed, true);
+  assert.ok(!beforeRestart.body.includes(answer.scenario));
+  assert.equal(beforeRestart.json().counts.discover, 1);
+  assert.equal((await f.submit(a, "discover", answer)).statusCode, 409);
+  assert.equal(
+    (await f.submit(a, "discover", { ...answer, scenario: "绕过删除" }))
+      .statusCode,
+    409,
+  );
+  const csv = await request(
+    f.app,
+    "GET",
+    "/api/teacher/export",
+    undefined,
+    f.teacher,
+  );
+  assert.ok(!csv.body.includes(answer.scenario));
+  assert.ok(csv.body.includes("乙同学"));
+  assert.equal(
+    f.app.store.get("SELECT content FROM submissions WHERE id=?", id).content,
+    "{}",
+  );
+  await f.restart();
+  assert.equal((await f.board(b)).json().total, 1);
+  assert.equal((await f.moderate([id], "restore")).statusCode, 400);
+  assert.equal((await f.submit(a, "discover", answer)).statusCode, 409);
+  const restarted = (
+    await request(f.app, "GET", "/api/student/state", undefined, a)
+  ).json();
+  assert.equal(restarted.submissions.discover.scenario, undefined);
+  assert.equal(restarted.submissions.discover.removed, true);
+  assert.equal(restarted.counts.discover, 1);
+  assert.equal(
+    f.app.store.get("SELECT content FROM submissions WHERE id=?", id).content,
+    "{}",
+  );
+  assert.equal(
+    (await f.board(f.teacher, "discover", "&role=teacher&status=deleted"))
+      .statusCode,
+    400,
+  );
+});
+
+test("批量管理校验教师权限、同源、数量和课堂归属，错误时整批不改变", async (t) => {
+  const f = await fixture(t),
+    oldStudent = await f.student();
+  await f.start();
+  await f.submit(oldStudent, "discover", discovery("旧课堂"));
+  const oldId = (await f.board(oldStudent)).json().rows[0].id;
+  const oldRoomId = f.app.store.room().id;
+  await f.control({ action: "page", open: false });
+  await request(
+    f.app,
+    "POST",
+    "/api/teacher/new-room",
+    { roomId: oldRoomId },
+    f.teacher,
+  );
+  const s = await f.student();
+  await f.start();
+  await f.submit(s, "discover", discovery());
+  const id = (await f.board(s)).json().rows[0].id;
+  for (const session of [s, ""])
+    for (const action of ["delete", "restore"])
+      assert.equal((await f.moderate([id], action, session)).statusCode, 401);
+  for (const ids of [
+    [],
+    [id, id],
+    ["1"],
+    [0],
+    [1.2],
+    Array.from({ length: 51 }, (_, i) => i + 1),
+  ])
+    assert.equal((await f.moderate(ids)).statusCode, 400);
+  assert.equal((await f.moderate([id], "purge")).statusCode, 400);
+  assert.equal(
+    (await f.moderate([id], "delete", f.teacher, { roomId: oldRoomId }))
+      .statusCode,
+    409,
+  );
+  assert.equal((await f.moderate([id, oldId])).statusCode, 409);
+  assert.equal((await f.moderate([id, 999999])).statusCode, 409);
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "POST",
+        "/api/teacher/submissions/moderate",
+        {
+          roomId: f.app.store.room().id,
+          ids: [id],
+          action: "delete",
+        },
+        f.teacher,
+        { origin: "https://other.example" },
+      )
+    ).statusCode,
+    403,
+  );
+  assert.equal((await f.board(s)).json().total, 1);
+  assert.equal(
+    f.app.store.get(
+      "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+    ).n,
+    0,
+  );
+  assert.equal(
+    f.app.store.get("SELECT deleted_at FROM submissions WHERE id=?", oldId)
+      .deleted_at,
+    null,
+  );
+});
+
+test("批量删除只清除选中记录的正文，分页在删除末页后回到有效页", async (t) => {
+  const f = await fixture(t);
+  await f.start();
+  for (let i = 0; i < 52; i++) {
+    const s = await f.student();
+    assert.equal(
+      (await f.submit(s, "discover", discovery(`分页同学${i}`))).statusCode,
+      200,
+    );
+  }
+  const first = (await f.board(f.teacher, "discover", "&role=teacher")).json();
+  const last = (
+    await f.board(f.teacher, "discover", "&role=teacher&page=2")
+  ).json();
+  assert.equal(last.rows.length, 2);
+  assert.equal(
+    (await f.moderate(last.rows.map((row) => row.id))).json().changed,
+    2,
+  );
+  const clamped = (
+    await f.board(f.teacher, "discover", "&role=teacher&page=2")
+  ).json();
+  assert.equal(clamped.page, 1);
+  assert.equal(clamped.total, 50);
+  assert.deepEqual(
+    clamped.rows.map((row) => row.id),
+    first.rows.map((row) => row.id),
+  );
+  assert.equal(
+    (await f.moderate(first.rows.map((row) => row.id))).json().changed,
+    50,
+  );
+  assert.equal(
+    (await f.board(f.teacher, "discover", "&role=teacher")).json().total,
+    0,
+  );
+  assert.equal(
+    f.app.store.get("SELECT COUNT(*) n FROM submissions WHERE content!='{}'").n,
+    0,
+  );
+  assert.equal(
+    f.app.store.get(
+      "SELECT COUNT(*) n FROM submissions WHERE deleted_at IS NOT NULL",
+    ).n,
+    52,
+  );
+});
+
 test("CSV 导出包含中文、换行和两阶段记录，并转义公式", async (t) => {
   const f = await fixture(t),
     s = await f.student();
@@ -710,13 +983,19 @@ test("旧数据库迁移保留课堂、学生与作品，两个旧开关同时�
     ).json();
     assert.equal(state.me.name, "旧同学");
     assert.equal(state.submissions.discover.scenario, "保留的旧作品");
+    assert.equal(
+      app.store.get("SELECT deleted_at FROM submissions").deleted_at,
+      null,
+    );
+    assert.equal(app.store.counts().discover, 1);
+    assert.equal("code" in state.room, false);
   } finally {
     await app.close();
   }
 });
 
 test(
-  "真实 HTTP SSE 通知提交及主题切换，断线后的状态仍受阅读门槛保护",
+  "真实 HTTP SSE 通知提交、删除及主题切换，断线后的状态仍受阅读门槛保护",
   { timeout: 15000 },
   async (t) => {
     const f = await fixture(t),
@@ -754,6 +1033,11 @@ test(
       );
       await f.submit(b, "discover", discovery("学生乙"));
       assert.equal((await f.board(b)).json().total, 2);
+      await until("event: update");
+      const id = (await f.board(b)).json().rows[0].id;
+      await f.moderate([id]);
+      await until("event: update");
+      assert.equal((await f.board(b)).json().total, 1);
       await f.control({ action: "stage", stage: "design" });
       await until("event: update");
       const state = await fetch(base + "/api/student/state", {

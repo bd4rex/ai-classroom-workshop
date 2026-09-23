@@ -15,6 +15,7 @@ import {
   LogOut,
   Search,
   Sparkles,
+  Trash2,
   Users,
   Wifi,
   WifiOff,
@@ -416,30 +417,38 @@ function StudentActivity({ kind, state, refresh }) {
       />
       {submitted ? (
         <div className="submitted-content">
-          <div className="saved-title">
-            <Check size={18} />
-            本主题提交成功
+          <div
+            className={`saved-title ${submitted.removed ? "removed-title" : ""}`}
+          >
+            {submitted.removed ? <Trash2 size={18} /> : <Check size={18} />}
+            {submitted.removed ? "本主题作品已被老师移除" : "本主题提交成功"}
           </div>
           <p className="identity">
             {me.school}
             <span>·</span>
             {me.name}
           </p>
-          <dl>
-            {kind === "discover" && (
-              <>
-                <dt>领域</dt>
-                <dd>{submitted.field}</dd>
-              </>
-            )}
-            <dt>{kind === "discover" ? "应用场景" : "场景"}</dt>
-            <dd>{submitted.scenario}</dd>
-            <dt>{kind === "discover" ? "价值" : "基本功能"}</dt>
-            <dd>
-              {kind === "discover" ? submitted.value : submitted.function}
-            </dd>
-          </dl>
-          <p className="saved-hint">同学的分享已解锁，一起看看其他人的想法。</p>
+          {!submitted.removed && (
+            <dl>
+              {kind === "discover" && (
+                <>
+                  <dt>领域</dt>
+                  <dd>{submitted.field}</dd>
+                </>
+              )}
+              <dt>{kind === "discover" ? "应用场景" : "场景"}</dt>
+              <dd>{submitted.scenario}</dd>
+              <dt>{kind === "discover" ? "价值" : "基本功能"}</dt>
+              <dd>
+                {kind === "discover" ? submitted.value : submitted.function}
+              </dd>
+            </dl>
+          )}
+          <p className="saved-hint">
+            {submitted.removed
+              ? "如有疑问请联系老师。你仍可以阅读本主题的同学分享。"
+              : "同学的分享已解锁，一起看看其他人的想法。"}
+          </p>
         </div>
       ) : (
         <form onSubmit={submit}>
@@ -879,7 +888,7 @@ function Share({ room }) {
     </aside>
   );
 }
-function Board({ state, role, fixedKind }) {
+function Board({ state, role, fixedKind, refreshClassroom }) {
   const student = role === "student";
   const [selected, setSelected] = useState(
     activities[state.room.stage] ? state.room.stage : "discover",
@@ -888,10 +897,63 @@ function Board({ state, role, fixedKind }) {
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState(""),
     [page, setPage] = useState(1);
+  const [school, setSchool] = useState(""),
+    [checked, setChecked] = useState([]),
+    [pendingDelete, setPendingDelete] = useState(null),
+    [moderating, setModerating] = useState(false),
+    [moderationError, setModerationError] = useState(""),
+    [notice, setNotice] = useState("");
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const refresh = useRef();
+  const deleteDialog = useRef();
+  const schoolOptions = [
+    ...new Set([...state.schools, ...(state.submissionSchools || [])]),
+  ];
+  const chosen = checked.filter((id) =>
+    data?.rows.some((row) => row.id === id),
+  );
+  const allChecked = !!data?.rows.length && chosen.length === data.rows.length;
+  useEffect(() => {
+    if (pendingDelete) deleteDialog.current?.showModal();
+    else deleteDialog.current?.close();
+  }, [pendingDelete]);
+  const requestModeration = (ids) => {
+    setPendingDelete({
+      ids,
+      names: data.rows
+        .filter((row) => ids.includes(row.id))
+        .map((row) => row.name),
+    });
+  };
+  const manage = async (ids) => {
+    if (moderating || !ids.length) return;
+    setModerating(true);
+    setModerationError("");
+    setNotice("");
+    try {
+      const result = await api("/api/teacher/submissions/moderate", {
+        roomId: state.room.id,
+        ids,
+        action: "delete",
+      });
+      setChecked([]);
+      setNotice(`已删除 ${result.changed} 份提交，作品正文已清除。`);
+      await refresh.current?.();
+      await refreshClassroom?.();
+    } catch (e) {
+      setModerationError(e.message);
+    } finally {
+      setModerating(false);
+    }
+  };
+  useEffect(() => {
+    setChecked([]);
+    setPendingDelete(null);
+    setNotice("");
+    setModerationError("");
+  }, [kind, query, school, page]);
   useEffect(() => {
     if (!student && activities[state.room.stage]) {
       setSelected(state.room.stage);
@@ -912,10 +974,13 @@ function Board({ state, role, fixedKind }) {
     const queue = createRefreshQueue(async () => {
       try {
         const result = await api(
-          `/api/board?${new URLSearchParams({ role, kind, page: String(page), q: filter, ...(student ? { classroomId: state.room.id } : {}) })}`,
+          `/api/board?${new URLSearchParams({ role, kind, page: String(page), q: filter, ...(student ? { classroomId: state.room.id } : { school }) })}`,
         );
         if (active) {
           setData(result);
+          setChecked((ids) =>
+            ids.filter((id) => result.rows.some((row) => row.id === id)),
+          );
           setError("");
         }
       } catch (e) {
@@ -933,7 +998,7 @@ function Board({ state, role, fixedKind }) {
       active = false;
       queue.stop();
     };
-  }, [role, kind, page, filter, state.room.id]);
+  }, [role, kind, page, filter, school, state.room.id]);
   useEffect(() => {
     refresh.current?.();
   }, [state]);
@@ -956,7 +1021,7 @@ function Board({ state, role, fixedKind }) {
           <p>
             {student
               ? "你已完成本主题，现在可以看看大家的想法。"
-              : "老师可查看所有主题的记录，不受学生提交限制。"}
+              : "按主题、学校或关键词定位提交；删除后学生端同步移除，作品正文永久清除。"}
           </p>
         </div>
       </div>
@@ -970,6 +1035,7 @@ function Board({ state, role, fixedKind }) {
                 role="tab"
                 aria-selected={kind === key}
                 aria-controls="board-panel"
+                disabled={moderating}
                 className={kind === key ? "active" : ""}
                 onClick={() => {
                   setSelected(key);
@@ -989,11 +1055,94 @@ function Board({ state, role, fixedKind }) {
             placeholder="搜索姓名、学校或内容"
             maxLength={80}
             value={query}
+            disabled={moderating}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
       </div>
+      {!student && (
+        <div className="moderation-toolbar">
+          <label>
+            学校
+            <select
+              aria-label="按学校筛选"
+              value={school}
+              disabled={moderating}
+              onChange={(e) => {
+                setSchool(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">全部学校</option>
+              {schoolOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="selection-actions">
+            <span>已选 {chosen.length} 份</span>
+            <button
+              className="secondary delete-action"
+              disabled={!chosen.length || moderating || busy}
+              onClick={() => requestModeration(chosen)}
+            >
+              <Trash2 size={16} />
+              {moderating ? "正在处理…" : "删除所选"}
+            </button>
+          </div>
+        </div>
+      )}
+      {!student && (
+        <p className="moderation-notice" role="status">
+          {notice ||
+            "可勾选本页批量删除，也可在每行右侧单独处理。删除后不计入统计和导出，且不可恢复。"}
+        </p>
+      )}
+      <ErrorText>{moderationError}</ErrorText>
       <ErrorText>{error}</ErrorText>
+      {!student && (
+        <dialog
+          className="delete-dialog"
+          ref={deleteDialog}
+          aria-labelledby="delete-confirm-title"
+          onCancel={(e) => {
+            e.preventDefault();
+            setPendingDelete(null);
+          }}
+        >
+          <h3 id="delete-confirm-title">确认删除提交</h3>
+          <p>
+            即将删除“一起{kind === "discover" ? "发现" : "设计"}”中的{" "}
+            {pendingDelete?.ids.length || 0} 份提交：
+          </p>
+          <p className="delete-names">{pendingDelete?.names.join("、")}</p>
+          <p>
+            作品正文将永久清除，学生端同步移除，统计和导出也不再包含这些内容。删除后不可恢复。
+          </p>
+          <div className="dialog-actions">
+            <button
+              className="secondary"
+              autoFocus
+              onClick={() => setPendingDelete(null)}
+            >
+              取消
+            </button>
+            <button
+              className="primary confirm-delete"
+              onClick={() => {
+                if (!pendingDelete) return;
+                const ids = pendingDelete.ids;
+                setPendingDelete(null);
+                manage(ids);
+              }}
+            >
+              确认删除
+            </button>
+          </div>
+        </dialog>
+      )}
       <div
         id="board-panel"
         role={student ? "region" : "tabpanel"}
@@ -1050,6 +1199,25 @@ function Board({ state, role, fixedKind }) {
             <table>
               <thead>
                 <tr>
+                  <th className="select-column">
+                    <input
+                      type="checkbox"
+                      aria-label="选择本页全部提交"
+                      checked={allChecked}
+                      disabled={moderating || busy || !data?.rows.length}
+                      ref={(el) => {
+                        if (el)
+                          el.indeterminate = chosen.length > 0 && !allChecked;
+                      }}
+                      onChange={(e) =>
+                        setChecked(
+                          e.target.checked
+                            ? data.rows.map((row) => row.id)
+                            : [],
+                        )
+                      }
+                    />
+                  </th>
                   <th className="index-column">序号</th>
                   <th className="person-column">姓名</th>
                   <th className="school-column">学校</th>
@@ -1058,11 +1226,30 @@ function Board({ state, role, fixedKind }) {
                   )}
                   <th>{kind === "discover" ? "应用场景" : "场景"}</th>
                   <th>{kind === "discover" ? "价值" : "基本功能"}</th>
+                  <th className="action-column">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.rows.map((row, index) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    className={chosen.includes(row.id) ? "selected-row" : ""}
+                  >
+                    <td className="select-column">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择${row.name}的提交`}
+                        checked={chosen.includes(row.id)}
+                        disabled={moderating || busy}
+                        onChange={(e) =>
+                          setChecked((ids) =>
+                            e.target.checked
+                              ? [...ids, row.id]
+                              : ids.filter((id) => id !== row.id),
+                          )
+                        }
+                      />
+                    </td>
                     <td className="row-index">
                       {data.total - ((data.page - 1) * 50 + index)}
                     </td>
@@ -1075,6 +1262,17 @@ function Board({ state, role, fixedKind }) {
                     )}
                     <td>{row.scenario}</td>
                     <td>{kind === "discover" ? row.value : row.function}</td>
+                    <td className="action-column">
+                      <button
+                        className="delete-action"
+                        aria-label={`删除${row.name}的提交`}
+                        disabled={moderating || busy}
+                        onClick={() => requestModeration([row.id])}
+                      >
+                        <Trash2 size={15} />
+                        删除
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1089,12 +1287,12 @@ function Board({ state, role, fixedKind }) {
                 ? "正在读取课堂想法…"
                 : error
                   ? "分享暂时不可用"
-                  : filter
+                  : filter || school
                     ? "没有找到匹配的内容"
-                    : "期待大家的第一个想法"}
+                    : "暂无可展示的作品"}
             </strong>
             <p>
-              {filter
+              {filter || school
                 ? "试试其他姓名、学校或关键词。"
                 : "提交的作品会在这里自动更新。"}
             </p>
@@ -1104,7 +1302,7 @@ function Board({ state, role, fixedKind }) {
       <div className="board-footer">
         <span aria-live="polite">
           {data
-            ? `共 ${data.total} 份${filter ? "匹配的" : ""}分享`
+            ? `共 ${data.total} 份${filter || school ? "匹配的" : ""}分享`
             : "正在读取"}{" "}
           · 每页最多 50 份
         </span>
@@ -1112,7 +1310,7 @@ function Board({ state, role, fixedKind }) {
           <div className="pagination">
             <button
               aria-label="上一页"
-              disabled={data.page <= 1}
+              disabled={moderating || data.page <= 1}
               onClick={() => setPage(data.page - 1)}
             >
               <ChevronLeft size={18} />
@@ -1122,7 +1320,7 @@ function Board({ state, role, fixedKind }) {
             </span>
             <button
               aria-label="下一页"
-              disabled={data.page >= data.pages}
+              disabled={moderating || data.page >= data.pages}
               onClick={() => setPage(data.page + 1)}
             >
               <ChevronRight size={18} />
@@ -1263,7 +1461,12 @@ export default function App() {
                 <Share room={state.room} />
               </section>
               <TeacherControls state={state} refresh={refresh} />
-              <Board state={state} role="teacher" />
+              <Board
+                key={state.room.id}
+                state={state}
+                role="teacher"
+                refreshClassroom={refresh}
+              />
               <ClassroomTools state={state} refresh={refresh} />
             </>
           ) : (

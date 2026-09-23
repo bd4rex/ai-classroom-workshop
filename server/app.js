@@ -138,12 +138,17 @@ export async function buildApp({
     return Object.fromEntries(
       store
         .all(
-          "SELECT kind,content,created_at FROM submissions WHERE participant_id=?",
+          "SELECT kind,content,created_at,deleted_at FROM submissions WHERE participant_id=?",
           person.id,
         )
         .map((s) => [
           s.kind,
-          { ...JSON.parse(s.content), createdAt: s.created_at },
+          {
+            ...(s.deleted_at !== null
+              ? { removed: true }
+              : JSON.parse(s.content)),
+            createdAt: s.created_at,
+          },
         ]),
     );
   }
@@ -157,7 +162,14 @@ export async function buildApp({
             me: { id: person.id, name: person.name, school: person.school },
             submissions: own(person),
           }
-        : {}),
+        : {
+            submissionSchools: store
+              .all(
+                "SELECT DISTINCT p.school FROM participants p JOIN submissions s ON s.participant_id=p.id WHERE s.room_id=? ORDER BY p.school",
+                store.meta("current"),
+              )
+              .map((row) => row.school),
+          }),
     };
   }
   app.setErrorHandler((error, request, reply) => {
@@ -205,7 +217,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.3.0",
+    version: "0.4.0",
   }));
   function studentState(request, reply) {
     const person = student(request);
@@ -390,11 +402,13 @@ export async function buildApp({
       };
     }
     const existing = store.get(
-      "SELECT content FROM submissions WHERE participant_id=? AND kind=?",
+      "SELECT content,deleted_at FROM submissions WHERE participant_id=? AND kind=?",
       person.id,
       kind,
     );
     if (existing) {
+      if (existing.deleted_at !== null)
+        throw new AppError("本主题作品已被老师移除，如有疑问请联系老师", 409);
       if (
         existing.content === JSON.stringify(content) &&
         (kind !== "discover" ||
@@ -432,9 +446,10 @@ export async function buildApp({
   });
   app.get("/api/board", async (request) => {
     const actor = audience(request);
+    const isTeacher = request.query.role === "teacher";
     const kind = request.query.kind;
     if (!kinds.includes(kind)) throw new AppError("环节不存在", 404);
-    if (request.query.role !== "teacher") {
+    if (!isTeacher) {
       const current = store.room();
       if (!current.pageOpen || current.stage !== kind)
         throw new AppError("请跟随老师查看当前主题", 403);
@@ -448,17 +463,28 @@ export async function buildApp({
         throw new AppError("先提交本主题的回答，再查看同学的分享", 403);
     }
     const page = Number(request.query.page || 1),
-      query = (request.query.q || "").trim();
+      query = (request.query.q || "").trim(),
+      schoolFilter = request.query.school || "",
+      status = request.query.status || "visible";
+    if (!isTeacher && (status !== "visible" || schoolFilter))
+      throw new AppError("只有老师可以使用管理筛选", 403);
     if (
       !Number.isSafeInteger(page) ||
       page < 1 ||
       page > 100000 ||
-      query.length > 80
+      query.length > 80 ||
+      typeof schoolFilter !== "string" ||
+      schoolFilter.length > 100 ||
+      status !== "visible"
     )
       throw new AppError("列表查询条件不正确");
-    const where =
-      "FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.room_id=? AND s.kind=? AND instr(p.name || p.school || s.content,?)>0";
+    let where =
+      "FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.room_id=? AND s.kind=? AND s.deleted_at IS NULL AND instr(p.name || p.school || s.content,?)>0";
     const args = [store.meta("current"), kind, query];
+    if (schoolFilter) {
+      where += " AND p.school=?";
+      args.push(schoolFilter);
+    }
     const total = store.get(`SELECT COUNT(*) n ${where}`, ...args).n;
     const pages = Math.max(1, Math.ceil(total / 50)),
       actualPage = Math.min(page, pages);
@@ -471,10 +497,46 @@ export async function buildApp({
       .map(({ content, ...row }) => ({ ...row, ...JSON.parse(content) }));
     return { rows, total, page: actualPage, pages };
   });
+  app.post("/api/teacher/submissions/moderate", async (request) => {
+    teacher(request);
+    const { roomId, ids, action } = request.body ?? {};
+    if (roomId !== store.meta("current"))
+      throw new AppError("课堂已更新，请刷新后再处理提交", 409);
+    if (
+      action !== "delete" ||
+      !Array.isArray(ids) ||
+      ids.length < 1 ||
+      ids.length > 50 ||
+      ids.some((id) => !Number.isSafeInteger(id) || id < 1) ||
+      new Set(ids).size !== ids.length
+    )
+      throw new AppError("请选择 1–50 份不同的提交进行删除");
+    const placeholders = ids.map(() => "?").join(",");
+    const changed = store.transaction(() => {
+      const found = store.get(
+        `SELECT COUNT(*) n FROM submissions WHERE room_id=? AND id IN (${placeholders})`,
+        roomId,
+        ...ids,
+      ).n;
+      if (found !== ids.length)
+        throw new AppError(
+          "选择中包含不存在或不属于本节课的提交，请刷新后重试",
+          409,
+        );
+      return store.run(
+        `UPDATE submissions SET content='{}',deleted_at=? WHERE room_id=? AND id IN (${placeholders}) AND deleted_at IS NULL`,
+        Date.now(),
+        roomId,
+        ...ids,
+      ).changes;
+    });
+    if (changed) broadcast();
+    return { ok: true, changed };
+  });
   app.get("/api/teacher/export", async (request, reply) => {
     teacher(request);
     const rows = store.all(
-      "SELECT p.name,p.school,s.kind,s.content,s.created_at FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.room_id=? ORDER BY s.id",
+      "SELECT p.name,p.school,s.kind,s.content,s.created_at FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.room_id=? AND s.deleted_at IS NULL ORDER BY s.id",
       store.meta("current"),
     );
     const records = [
