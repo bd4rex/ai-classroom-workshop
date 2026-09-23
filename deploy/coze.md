@@ -1,6 +1,23 @@
 # 扣子多实例部署与 500 人课堂
 
-[English](coze.en.md) · [返回说明](../README.md)
+[English](coze.en.md) · [返回说明](../README.md) · [完整排查记录](DEBUGGING_2026-09-23.md)
+
+## 新项目快速落地
+
+1. 导入本项目已合并的 `main`，核对实际 Git 提交。Node.js 需要 24 或以上；扣子终端使用 `pnpm`。
+2. 打开“数据库”，创建默认 PostgreSQL。若终端没看到 PG 变量，重连沙箱并新开终端；只检查变量是否存在，不打印其值。
+3. 先备份平台原 `.coze`，再参考 [无密钥配置模板](coze.toml.example) 设置开发和生产命令。开发需限定 `--watch-path`，避免 Vite 临时文件触发无限重启。生产必须设置 `REQUIRE_SHARED_DATABASE=true`。
+4. 保持 `DATABASE_SCHEMA=public`，让平台发现表结构。已有数据库先走下文迁移流程；空库首次启动会创建课堂。初始教师密码通过平台环境配置，不写进 Git；已有数据库里的密码不会被环境变量覆盖。
+5. 执行 `pnpm install`、`pnpm run check`。注意默认检查中的 PostgreSQL 专项会跳过；需要实测共享库时按下文安全构造 `TEST_DATABASE_URL`。
+6. 检查开发 `/api/health` 显示 `version: 0.5.0`、`storage: postgres`、`syncMode: polling`。在独立标签页打开 `/teacher`，登录、复制学生链接，用另一浏览器上下文完成两个主题的演练。
+7. 生产发布时确认选用生产数据库。首次空白落地不要把开发演练学生数据复制过去；已有生产数据不要选择“用开发数据覆盖生产”。平台的开发／生产数据库不是同一份。
+8. 发布完成后，在实际生产域名执行本文验收。页面显示“部署成功”不替代健康、登录和原固定链接检查。记录上线提交、时间、环境、结果与剩余项。
+
+## 已有项目升级顺序
+
+按顺序处理：**确认生产数据来源 → 停止写入并备份 → 预检 → 空目标库迁移 → 核对原字段 → 更新代码和配置 → 启动 → 验收**。不能先启动新应用让它生成新课堂，再尝试导入旧课堂。
+
+开发沙箱文件不能充当生产备份。需要保留原生产 SQLite 时，必须先取得实际生产实例的文件或平台备份；若平台暂未提供生产终端／备份导出能力，先保留现状并解决取数途径，不点击覆盖部署。两个旧实例可能各有数据，不能随意只取其中一份。
 
 ## 为什么要共享数据库
 
@@ -17,6 +34,22 @@
 7. 登录和课堂使用独立浏览器标签页。应用保留 HttpOnly / SameSite=Strict Cookie；预览 iframe 中凭据受限时给出明确提示，学生也不会因轮询反复新建身份。
 
 不要直接把实例数乘以单实例并发数当作在线人数上限：后者限制的是同时处理的请求。当前 2 × 100 配置与 500 人是否匹配，取决于请求耗时、网关排队、数据库网络和资源配额。先使用共享库及短请求同步，再在隔离课堂做目标环境验收；没有实测前不承诺生产能稳定支撑 500 人。
+
+## 安全检查数据库接入
+
+以下命令只输出变量名称和是否存在：
+
+```bash
+node -e 'console.log(Object.fromEntries(["PGHOST","PGPORT","PGUSER","PGPASSWORD","PGDATABASE","PGSSLMODE","DATABASE_URL","PGDATABASE_URL"].map(k=>[k,Boolean(process.env[k])])));'
+```
+
+在开发或专用测试数据库执行共享库测试，不使用正式库。以下代码在内存中组合连接串，只传给测试子进程；不会打印密码。测试创建并清理自己的 schema，但仍需目标数据库允许创建 schema。
+
+```bash
+node --input-type=module -e 'import {spawnSync} from "node:child_process";let connection=process.env.DATABASE_URL||process.env.PGDATABASE_URL;if(!connection){if(!process.env.PGHOST||!process.env.PGDATABASE)throw new Error("Missing PG environment");const u=new URL("postgresql://localhost");u.hostname=process.env.PGHOST;u.port=process.env.PGPORT||"5432";u.username=process.env.PGUSER||"";u.password=process.env.PGPASSWORD||"";u.pathname="/"+process.env.PGDATABASE;connection=u.href;}const r=spawnSync("pnpm",["run","check"],{env:{...process.env,TEST_DATABASE_URL:connection},stdio:"inherit"});process.exitCode=r.status??1;'
+```
+
+预期：40 项通过、0 项失败，并完成构建。缺少 `TEST_DATABASE_URL` 的默认 SQLite 检查是 37 项通过、3 项跳过，不能把它记成共享数据库已验证。不要用 `env`、`printenv` 或 `set -x` 输出连接密钥。
 
 ## 保留旧课堂和作品
 
@@ -42,5 +75,20 @@ node --env-file-if-exists=.env scripts/migrate-postgres.js /安全备份/classro
 - 每秒约 167 次状态查询是 500 人、平均 3 秒同步的参考值，还要计入进入、集中提交和列表请求。
 - 隔离压测入口：`TEST_DATABASE_URL=... npm run test:load`，只允许本地数据库，创建和清理独立的合成 schema。它不向线上发压测流量。
 - 回退到旧 SQLite 版本前必须停写并处理切换后新增的 PostgreSQL 数据；只回滚代码会让新数据暂时不可见。保留旧库与新库备份，不能把数据回退理解为只恢复 Git 提交。
+
+## 常见现象与下一步
+
+| 现象 | 检查顺序 |
+| --- | --- |
+| 密码正确但马上显示未登录 | 先看实际生产 health 是否为 PostgreSQL；确认所有实例使用同一库；再在顶层标签页检查 Cookie。不要反复重置密码 |
+| 新复制链接可用，旧链接无效 | 比较课堂 ID、数据库来源、是否新建过课堂；找原库备份。不要把未知 ID 自动跳到新课堂 |
+| “课堂定时同步” | PostgreSQL 正常状态；测试老师切主题后学生在下一次同步跟随 |
+| “连接中断，正在重试” | 检查 `/api/session` 的状态码及内容类型、应用日志和数据库连接；HTTP 200 HTML 也可能是代理错误页 |
+| 并发提交失败 | 核对含 `room_changes` 的修复版本；查看脱敏错误码、数据库连接等待、网关限流与实例资源；用隔离测试复现 |
+| 创建数据库后仍提示缺少配置 | 重连沙箱、新建终端，检查变量存在性；生产还要检查生产库是否绑定 |
+| 预览一直重启 | 检查是否误用裸 `--watch`，改为模板中的两个 `--watch-path` |
+| 迁移提示目标已有数据 | 立即停止覆盖尝试；先识别数据来源并备份。工具的拒绝是保护，不应通过清表绕过 |
+
+每次上线把结果追加到 [交接日志](../TIMESTAMP_LOG.md)，维护 [验证记录](../TEST_REPORT.md)；故障过程参考 [本次完整记录](DEBUGGING_2026-09-23.md)。
 
 平台说明：[集成数据库](https://docs.coze.cn/guides_integrate_database)、[部署网页应用](https://docs.coze.cn/guides_deploy_vibe_web)。

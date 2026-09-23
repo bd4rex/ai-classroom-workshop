@@ -1,6 +1,6 @@
 # AI Classroom Workshop
 
-[中文](README.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
+[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Investigation](deploy/DEBUGGING_2026-09-23.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
 One teacher, one classroom, two fixed topics. The teacher controls page access and lesson progression. Students open a fixed link to enter directly and automatically follow the current topic. They write independently, then unlock that topic’s peer responses on the right after submitting.
 
@@ -86,7 +86,7 @@ Docker stores data in the `classroom-data` named volume and mounts the host's `c
 
 ## Coze and multiple replicas
 
-Version 0.5.0 supports shared PostgreSQL sessions and classroom state with 2.5–3.5 second polling. A local test passed with two separate processes and 500 students joining and submitting in bursts; this is not acceptance of Coze production capacity. See [Coze deployment](deploy/coze.en.md) for configuration, migration, and rollback.
+Version 0.5.0 supports shared PostgreSQL sessions and classroom state with 2.5–3.5 second polling. Two separate local processes passed 500-user join/submission bursts; actual Coze development PostgreSQL passed all 40 checks. This is not acceptance of production capacity. The [deployment guide](deploy/coze.en.md) covers new projects, upgrades, a configuration template, migration, and rollback. The [investigation record](deploy/DEBUGGING_2026-09-23.en.md) preserves failed attempts, fixes, and retests alongside sanitized load evidence.
 
 ## Troubleshooting deployed connections and links
 

@@ -22,13 +22,13 @@
 
 | 操作 | 请求数 | P95（毫秒） | P99（毫秒） |
 | --- | ---: | ---: | ---: |
-| 同时加入 | 500 | 502 | 522 |
-| 发现提交 | 500 | 346 | 367 |
-| 设计提交 | 500 | 373 | 389 |
-| 状态轮询 | 10246 | 4 | 174 |
-| 分享列表 | 500 | 244 | 253 |
+| 同时加入 | 500 | 212 | 214 |
+| 发现提交 | 500 | 167 | 168 |
+| 设计提交 | 500 | 124 | 132 |
+| 状态轮询 | 10135 | 5 | 47 |
+| 分享列表 | 500 | 173 | 185 |
 
-共 13799 次请求，0 次非预期错误，同时在途请求峰值 523。
+共 13688 次请求，0 次非预期错误，同时在途请求峰值 523。
 
 预期的阅读门槛 403 不计为错误。删除一份设计作品后，最终计数应为 500 人、500 份发现、499 份设计；原 1,000 份提交没有丢失，删除记录仅剩回执。压测脚本只允许本地数据库，不接受公网生产数据库地址。
 
@@ -39,6 +39,12 @@ PostgreSQL QA 服务上 `test/browser/flow.js` 通过：一个教师和两个独
 `test/browser/auth.js` 通过：模拟 Cookie 被拦截后教师得到明确提示，学生只尝试加入一次；代理返回 HTTP 200 HTML 时保留教师工作台并显示断线，正常响应恢复后继续同步。PostgreSQL 模式没有发送任何 SSE 请求。首轮模拟脚本需修正 `route.fetch` 写入测试 Cookie 的副作用及学生错误文案的定位；修正后通过，非产品缺陷。
 
 SQLite 真实 SSE 鉴权、通知、握手、心跳、退出清理和静默连接恢复继续由自动化测试覆盖。原 SSE 故障浏览器脚本本轮未重复；共享库模式不依赖 SSE。
+
+## 扣子开发数据库复测与迁移
+
+实际扣子 PostgreSQL 首轮 39 项通过、1 项并发加入失败；消除课堂行的写入竞争后，扩展到 500 人、1,000 份提交，40 项全部通过，总测试约 64.7 秒，集中提交用例约 10.8 秒。该检查使用应用注入请求和真实云数据库，没有通过生产网关。开发预览更新到 0.5.0，health 确认为 PostgreSQL／polling；原教师密码可登录，刷新后保持工作台。 扣子开发独立师生标签页还实测通过了等待、一起发现、未交第一份直接进入一起设计、关闭进入等候、重新开放自动恢复；两个主题未提交时分享保持锁定。
+
+旧开发 SQLite 完整备份并事务导入后，7 个课堂、343 个参与身份、16 份提交、11 条教师会话和 2 条元数据逐表所有源字段一致。原课堂 ID、密码和已删除回执保留；此数量为迁移时快照，后续浏览器检查会产生正常会话或匿名参与身份。
 
 ## 部署证据与边界
 
@@ -66,4 +72,4 @@ npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/auth.js
 ```
 
-原始结果在忽略的 `output/load-test/result.json`、`output/check-v050-*.log`、`output/browser-auth-v050.log` 和 `output/playwright/`。迁移和回退见 [扣子部署说明](deploy/coze.md)。
+已入库的脱敏 [HTTP 压测结果](deploy/evidence/load-2026-09-23.json) 对应提交 `6d511e9`。[检查摘要](deploy/evidence/validation-2026-09-23.json) 同时保留环境及迁移核验结果。详细失败与修复过程见 [排查记录](deploy/DEBUGGING_2026-09-23.md)。完整原始结果在忽略的 `output/load-test/result.json`、`output/check-v050-*.log`、`output/browser-auth-v050.log` 和 `output/playwright/`。迁移和回退见 [扣子部署说明](deploy/coze.md)。

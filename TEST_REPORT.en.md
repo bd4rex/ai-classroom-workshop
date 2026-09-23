@@ -22,13 +22,13 @@ Results below use local loopback networking and cannot establish capacity for Co
 
 | Operation | Requests | P95 (ms) | P99 (ms) |
 | --- | ---: | ---: | ---: |
-| join | 500 | 502 | 522 |
-| submit-discover | 500 | 346 | 367 |
-| submit-design | 500 | 373 | 389 |
-| poll | 10246 | 4 | 174 |
-| board | 500 | 244 | 253 |
+| join | 500 | 212 | 214 |
+| submit-discover | 500 | 167 | 168 |
+| submit-design | 500 | 124 | 132 |
+| poll | 10135 | 5 | 47 |
+| board | 500 | 173 | 185 |
 
-13799 requests, 0 unexpected errors; peak 523 in flight.
+13688 requests, 0 unexpected errors; peak 523 in flight.
 
 Expected sharing-gate 403 responses are not errors. After removing one design response, counts must be 500 participants, 500 discovery responses, and 499 design responses. All 1,000 submissions were retained; the removed response keeps only its receipt. The test runner only accepts local database addresses.
 
@@ -39,6 +39,12 @@ Expected sharing-gate 403 responses are not errors. After removing one design re
 `test/browser/auth.js` passed: blocked cookies produce a clear teacher error and only one student join attempt. An HTTP 200 HTML proxy error preserves the teacher workspace, shows interrupted connectivity, and recovers on valid responses. PostgreSQL mode makes zero SSE requests. The initial simulation needed correction for `route.fetch` updating test cookies and the student-message locator; corrected checks passed without product changes.
 
 SQLite SSE authentication, notification, handshake, heartbeat, logout cleanup, and silent-connection recovery remain covered by automated tests. The older SSE fault browser script was not rerun; shared-storage operation does not depend on SSE.
+
+## Coze development database retest and migration
+
+The first actual Coze PostgreSQL run passed 39 checks and failed one concurrent-join check. After removing classroom-row write contention, the case expanded to 500 participants and 1,000 submissions: all 40 checks passed in about 64.7 seconds, with the burst case taking about 10.8 seconds. These use injected application requests and the real cloud database, not the production gateway. Development preview health reports version 0.5.0 with PostgreSQL/polling; the original teacher password signs in, and refresh preserves the workspace. Standalone teacher/student Coze development tabs also passed waiting, discovery, advancing an unsubmitted student to design, closing into waiting, and reopening automatically; sharing stayed locked before submission in both topics.
+
+After a complete backup and transactional import, all original fields matched across seven classrooms, 343 participant identities, 16 responses, 11 teacher sessions, and two metadata entries. Classroom IDs, password, and removal receipts were preserved. These are migration-time counts; subsequent browser checks can create ordinary sessions or anonymous participants.
 
 ## Deployment evidence and limits
 
@@ -66,4 +72,4 @@ npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --
 npx --yes --package @playwright/cli playwright-cli -s=workshop-check run-code --filename=test/browser/auth.js
 ```
 
-Raw ignored artifacts: `output/load-test/result.json`, `output/check-v050-*.log`, `output/browser-auth-v050.log`, and `output/playwright/`. See [Coze deployment](deploy/coze.en.md) for migration and rollback.
+Committed sanitized [HTTP load evidence](deploy/evidence/load-2026-09-23.json) corresponds to commit `6d511e9`. The [check summary](deploy/evidence/validation-2026-09-23.json) also records environment and migration verification. See the [investigation](deploy/DEBUGGING_2026-09-23.en.md) for failures and fixes. Full raw ignored artifacts: `output/load-test/result.json`, `output/check-v050-*.log`, `output/browser-auth-v050.log`, and `output/playwright/`. See [Coze deployment](deploy/coze.en.md) for migration and rollback.
