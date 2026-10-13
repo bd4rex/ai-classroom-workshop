@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 10:43 · Three-activity release merged into main
+
+- At the user's request, [PR #2](https://github.com/bd4rex/ai-classroom-workshop/pull/2) merged into `main` at 10:43 Asia/Shanghai as `ad07065d391788b05e2ff6e908d66cfe15c64464`. GitHub's `MERGED` status and remote main were read back, and local main was fast-forwarded to the merge commit.
+- The merged head is the validated `f23c683`, including true/false, single choice, word clouds, the 16:9 student view, database compatibility, Docker packaging, and bilingual investigation records. No functional code changed during this turn; previously passing checks were not rerun.
+- This entry is published as a follow-up documentation commit on main. Coze production has not deployed this release, and the local demo remains running. Production data, passwords, and replica settings were not changed.
+
 ## 2026-10-13 · Three activities, pie/cloud results, and a 16:9 student view
 
 - Version 0.6.0 adds teacher-editable true/false, choice, and word-cloud prompts. Students unlock class aggregates on the right after each activity’s submission. Teacher pacing, page access, pause, stable links, and deletion remain.
