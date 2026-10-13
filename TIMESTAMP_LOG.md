@@ -2,6 +2,13 @@
 
 [English](TIMESTAMP_LOG.en.md) · [返回说明](README.md)
 
+## 2026-10-13 12:45 · 两个扣子项目发布失败核对
+
+- 原始部署日志确认两边都在平台结构同步阶段因 `activity_id NOT NULL` 遇到旧记录而报 `23502`，早于应用回填。原项目正式站仍为 0.4.0，“网站 2”为 0.5.0；待发布分别为平台侧 0.8.0 和 0.7.0，GitHub main 当时为 `3a98f56` / 0.7.0。
+- 生产 SELECT 汇总：原项目 16 条（14 可见、2 回执），“网站 2”1 条（0 可见、1 回执），两库都缺少新列。原站 health 不返回存储类型，实际运行数据来源与可恢复备份仍须升级前核对。未执行删除、生产迁移、密码或实例变更，也未重新发布。
+- 新增[中英文排查记录](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.md)、只读预检、须停写备份的事务预迁移 SQL、隔离回归和脱敏证据；更正部署手册“应用自动迁移”在扣子上的前置条件及测试计数。
+- SQLite 51 通过／6 跳过，PostgreSQL 57 全通过，语法与构建通过。代码运行逻辑和版本号未修改。记录在 `codex/coze-deployment-diagnosis`；生产修复与正式域名验收未执行。
+
 ## 2026-10-13 11:55 · 可增删活动版本合并 main
 
 - 按用户要求，[PR #3](https://github.com/bd4rex/ai-classroom-workshop/pull/3) 已于 11:55（Asia/Shanghai）合并到 `main`，合并提交 `4588745471593c4a11c19cc50d11ca74bfd2139f`；已回读 GitHub `MERGED` 状态、远端 main，并将本地 main 快进同步。

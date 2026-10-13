@@ -2,6 +2,13 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-13 · Coze schema-first failure and pre-migration
+
+- Read-only production queries and raw deployment logs confirmed missing `activity_id` and schema-sync error `23502` in both projects; public health still reported 0.5.0 and 0.4.0 respectively. No production schema/data, credentials, replicas, or release changed.
+- A new isolated PostgreSQL reproduction fails on direct NOT NULL synchronization, then validates the delivered transactional backfill, preservation of all seven old columns and other tables, cleared removal receipts, repeatability, and existing custom IDs. Subsequent application migration supports repeated-type activity records.
+- `npm run check`: 51 of 57 passed, six expected skips; syntax and build passed. `npm test` with local `TEST_DATABASE_URL`: all 57 passed.
+- Added the [cause, maintenance sequence, and boundaries](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), [read-only SQL](deploy/sql/coze-activity-id-preflight.sql), [maintenance SQL](deploy/sql/coze-activity-id-premigration.sql), and [sanitized evidence](deploy/evidence/coze-deployment-2026-10-13.json). Maintenance SQL has not run in production; full backup and stopping all old writers are prerequisites.
+
 ## 2026-10-13 · 0.7.0 editable activity lists
 
 - SQLite `npm test`: 51 of 56 passed, five PostgreSQL-only checks skipped. Local shared PostgreSQL: all 56 passed. Syntax and production build passed; no dependencies added.

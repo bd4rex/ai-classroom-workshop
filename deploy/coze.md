@@ -15,6 +15,8 @@
 
 ## 已有项目升级顺序
 
+**扣子升级前置步骤（2026-10-13 实测）：** 平台会先同步开发库最终表结构，再启动应用。生产已有提交但没有 `activity_id` 时，直接发布 0.7 会以 `SQLSTATE 23502` 失败，应用自动回填尚未运行。先核对实际数据来源、备份并停止旧写入，再按[双项目发布故障与预迁移流程](DEBUGGING_COZE_DEPLOY_2026-10-13.md)处理，不能只重复点击部署或清空提交。
+
 升级到 0.7 并继续使用原数据库时，先停止所有旧实例写入并完整备份，再统一启动新代码。活动 ID、唯一约束和活动数组自动兼容升级，原课堂 ID、会话和回执保留。**不可混用 0.6 及更旧代码读写升级后的库，也不能只回退代码。** 不要对已有 PostgreSQL 再次执行导入。学生端继续固定 16:9，教师后台可滚动；见 [0.7 升级与回退记录](DEBUGGING_ACTIVITIES_2026-10-13.md)。下方空库导入步骤仅用于更换存储后端。
 
 按顺序处理：**确认生产数据来源 → 停止写入并备份 → 预检 → 空目标库迁移 → 核对原字段 → 更新代码和配置 → 启动 → 验收**。不能先启动新应用让它生成新课堂，再尝试导入旧课堂。
@@ -51,7 +53,7 @@ node -e 'console.log(Object.fromEntries(["PGHOST","PGPORT","PGUSER","PGPASSWORD"
 node --input-type=module -e 'import {spawnSync} from "node:child_process";let connection=process.env.DATABASE_URL||process.env.PGDATABASE_URL;if(!connection){if(!process.env.PGHOST||!process.env.PGDATABASE)throw new Error("Missing PG environment");const u=new URL("postgresql://localhost");u.hostname=process.env.PGHOST;u.port=process.env.PGPORT||"5432";u.username=process.env.PGUSER||"";u.password=process.env.PGPASSWORD||"";u.pathname="/"+process.env.PGDATABASE;connection=u.href;}const r=spawnSync("pnpm",["run","check"],{env:{...process.env,TEST_DATABASE_URL:connection},stdio:"inherit"});process.exitCode=r.status??1;'
 ```
 
-预期：50 项通过、0 项失败，并完成构建。缺少 `TEST_DATABASE_URL` 的默认 SQLite 检查是 46 项通过、4 项跳过，不能把它记成共享数据库已验证。不要用 `env`、`printenv` 或 `set -x` 输出连接密钥。
+预期：57 项通过、0 项失败，并完成构建。缺少 `TEST_DATABASE_URL` 的默认 SQLite 检查是 51 项通过、6 项跳过，不能把它记成共享数据库已验证。新增扣子 schema 先同步的失败复现及停写预迁移检查；测试通过仍不能替代实际生产发布验收。不要用 `env`、`printenv` 或 `set -x` 输出连接密钥。
 
 ## 保留旧课堂和作品
 

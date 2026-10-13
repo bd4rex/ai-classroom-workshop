@@ -1,6 +1,6 @@
 # AI 共创课堂
 
-[English](README.en.md) · [部署手册](deploy/coze.md) · [活动管理记录](deploy/DEBUGGING_ACTIVITIES_2026-10-13.md) · [部署排查](deploy/DEBUGGING_2026-09-23.md) · [验证记录](TEST_REPORT.md) · [交接日志](TIMESTAMP_LOG.md)
+[English](README.en.md) · [部署手册](deploy/coze.md) · [活动管理记录](deploy/DEBUGGING_ACTIVITIES_2026-10-13.md) · [最新部署排查](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.md) · [验证记录](TEST_REPORT.md) · [交接日志](TIMESTAMP_LOG.md)
 
 一个老师、一节课堂，自由安排判断题、选择题和词云活动。每节课最多 50 个活动，同类型可重复添加。老师控制学生页面总开关和课堂节奏，学生打开固定链接自动跟随；每个活动先独立提交，随后在右侧看到全班饼图或词云。
 

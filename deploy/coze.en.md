@@ -15,6 +15,8 @@
 
 ## Existing-project upgrade order
 
+**Coze prerequisite, verified 2026-10-13:** the platform synchronizes the final development schema before starting the application. Publishing 0.7 directly against existing submissions without `activity_id` fails with `SQLSTATE 23502` before the application's backfill runs. Identify the actual data source, back up, stop old writers, and follow the [two-project incident and pre-migration procedure](DEBUGGING_COZE_DEPLOY_2026-10-13.en.md). Repeated deployment attempts or clearing submissions are not the required remedy.
+
 When upgrading existing storage to 0.7, stop all old writers and take a complete backup, then start the new version on all instances together. Activity IDs, uniqueness constraints, and activity-array compatibility migrate automatically while retaining classroom IDs, sessions, and receipts. **Do not mix 0.6-or-older writers against upgraded storage; code-only rollback is unsupported.** Do not re-import an existing PostgreSQL database. Student presentation stays 16:9 and the teacher workspace scrollable. See [0.7 upgrade and rollback](DEBUGGING_ACTIVITIES_2026-10-13.en.md). The empty-database import below is only for changing storage backends.
 
 Proceed in order: **identify production source → stop writes and back up → inspect → import into empty target → compare original fields → update code/configuration → start → validate**. Do not initialize a fresh classroom before importing the old one.
@@ -51,7 +53,7 @@ Run shared-storage tests against development or a dedicated test database, never
 node --input-type=module -e 'import {spawnSync} from "node:child_process";let connection=process.env.DATABASE_URL||process.env.PGDATABASE_URL;if(!connection){if(!process.env.PGHOST||!process.env.PGDATABASE)throw new Error("Missing PG environment");const u=new URL("postgresql://localhost");u.hostname=process.env.PGHOST;u.port=process.env.PGPORT||"5432";u.username=process.env.PGUSER||"";u.password=process.env.PGPASSWORD||"";u.pathname="/"+process.env.PGDATABASE;connection=u.href;}const r=spawnSync("pnpm",["run","check"],{env:{...process.env,TEST_DATABASE_URL:connection},stdio:"inherit"});process.exitCode=r.status??1;'
 ```
 
-Expected: 50 passed, zero failures, and a successful build. Without `TEST_DATABASE_URL`, SQLite checks report 46 passed and four skipped; this does not validate shared storage. Do not print secrets with `env`, `printenv`, or `set -x`.
+Expected: 57 passed, zero failures, and a successful build. Without `TEST_DATABASE_URL`, SQLite checks report 51 passed and six skipped; this does not validate shared storage. The added test reproduces schema-first failure and checks maintenance pre-migration. Passing tests do not replace production deployment acceptance. Do not print secrets with `env`, `printenv`, or `set -x`.
 
 ## Preserve existing classrooms and responses
 

@@ -2,6 +2,13 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 12:45 · Investigation of two failed Coze releases
+
+- Raw logs confirmed both failures occur during platform schema synchronization: `activity_id NOT NULL` encounters old records and raises `23502` before application backfill. The original production site remains 0.4.0 and project 2 remains 0.5.0; pending platform releases are 0.8.0 and 0.7.0 respectively. GitHub main was `3a98f56` / 0.7.0.
+- Production SELECT aggregates: original project 16 records (14 visible, two receipts), project 2 one record (zero visible, one receipt); both lack the new column. The old site's health omits storage, so its actual data source and restorable backup still need verification before upgrade. No deletion, production migration, credential/replica change, or deployment was performed.
+- Added a [paired investigation record](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), read-only preflight, transactional pre-migration SQL requiring backup/write suspension, isolated regression, and sanitized evidence. Corrected the Coze prerequisite for automatic application migration and stale check counts.
+- SQLite: 51 passed / six skipped. PostgreSQL: all 57 passed. Syntax and build passed. Runtime logic and version are unchanged. Records are on `codex/coze-deployment-diagnosis`; production repair and post-release domain acceptance remain unperformed.
+
 ## 2026-10-13 11:55 · Editable activity release merged into main
 
 - At the user's request, [PR #3](https://github.com/bd4rex/ai-classroom-workshop/pull/3) merged into `main` at 11:55 Asia/Shanghai as `4588745471593c4a11c19cc50d11ca74bfd2139f`. GitHub's `MERGED` state and remote main were read back, and local main was fast-forwarded to match.

@@ -2,6 +2,13 @@
 
 [English](TEST_REPORT.en.md) · [返回说明](README.md)
 
+## 2026-10-13 · 扣子结构同步前置失败与预迁移
+
+- 两个项目的生产只读查询和原始部署日志确认缺少 `activity_id`，结构同步报 `23502`；正式 health 仍分别为 0.5.0 和 0.4.0。本轮未改生产库、密码、实例或重新发布。
+- 新增隔离 PostgreSQL 复现：直接同步非空列失败，交付的事务 SQL 回填成功，旧七列及其它表保留，回执正文仍清空，重复执行与已有自定义 ID 保留通过；随后应用升级支持同类型多活动记录。
+- `npm run check`：57 项中 51 通过、6 项按预期跳过，语法与构建通过；配置本机 `TEST_DATABASE_URL` 的 `npm test`：57 项全部通过。
+- [原因、维护顺序与边界](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.md)、[只读 SQL](deploy/sql/coze-activity-id-preflight.sql)、[维护 SQL](deploy/sql/coze-activity-id-premigration.sql)和[脱敏证据](deploy/evidence/coze-deployment-2026-10-13.json)入库。维护 SQL 尚未在生产执行；它要求完整备份和全部旧写入停止。
+
 ## 2026-10-13 · 0.7.0 可增删、排序的活动列表
 
 - SQLite `npm test`：56 项中 51 项通过、5 项 PostgreSQL 专项跳过；本地共享 PostgreSQL：56 项全通过。语法检查和生产构建通过，无新增依赖。

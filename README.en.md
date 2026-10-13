@@ -1,6 +1,6 @@
 # AI Classroom Workshop
 
-[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Activity management](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md) · [Deployment investigation](deploy/DEBUGGING_2026-09-23.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
+[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Activity management](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md) · [Latest deployment investigation](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
 One teacher, one classroom, freely arranged true/false, single-choice, and word-cloud activities. Each lesson supports up to 50 activities, including repeated types. The teacher controls access and pacing. Students follow a fixed link and submit independently before unlocking the current activity’s pie chart or word cloud on the right.
 
