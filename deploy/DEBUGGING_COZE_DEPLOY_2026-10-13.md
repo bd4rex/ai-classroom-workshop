@@ -2,6 +2,21 @@
 
 [English](DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) · [部署手册](coze.md) · [交接日志](../TIMESTAMP_LOG.md)
 
+## 14:48 与 GitHub main 的代码一致性核对
+
+本次基准是 GitHub main `a8a439f`，包版本 0.7.0；核对结束时再次读取远端，提交未变化。分别检查正式 health、实际下载的网页 JS/CSS，以及扣子已部署提交的源文件指纹，没有修改代码、数据库或重新部署。
+
+| 目标 | 实际版本 / 部署提交 | 与 GitHub main 的关系 |
+| --- | --- | --- |
+| 网站 2：`ai5class.coze.site` | 0.7.0 / `7ce857c` | 核对范围内 21 个核心文件全部相同；正式 JS 和 CSS 与干净 main 的新构建逐字节一致 |
+| 原项目：`ai4class.coze.site` | 0.8.0 / `c9a56d8` | 21 个核心文件中 15 个相同、6 个不同；正式 JS 不同，CSS 相同 |
+
+范围包含 `server/` 全部五个文件、`shared/`、`src/`、`config/`、`public/`、`index.html`、`vite.config.js`、`package.json` 和 `package-lock.json`。网站 2 的这些路径执行 `git ls-tree -r <部署提交> -- <路径>` 后，输出 SHA-256 与 GitHub 基准均为 `4dd0bdf5f818a8a04fcd0e40e86a789c878aca960ffb6c7420c57ac4aec3497a`。这证明业务源文件一致，不代表平台配置、维护文档、整个容器镜像或实际安装依赖完全相同。
+
+原项目不同的六个文件为 `server/app.js`、`server/store.js`、`src/App.jsx`、`src/Presentation.jsx`、`package.json`、`package-lock.json`。读取实际网页产物与后端 `app.js` 的 Git blob 差异后，确认其学校、姓名可以不填；前端显示“未署名”，旧发现／设计活动的领域、场景、价值和基本功能也改为选填。GitHub 和网站 2 仍保留必填规则。原项目的鉴权、数据库迁移、服务器入口及共享活动定义文件与基准相同；不能把已有的这些机制误算为 0.8.0 独有改动。
+
+网站 2 的扣子仓库没有上游 `3a98f56` 提交对象，直接按该提交做 diff 报 bad revision；改用不可变部署提交的文件 blob 和整体清单指纹完成核对，不为此执行 fetch、覆盖或合并。中途用户在使用 Chrome，经用户确认可切换后继续；只重连开发沙箱并运行只读 Git 命令。原项目源文件差异并未同步回 GitHub。本次结果及各文件／产物指纹见[脱敏对比证据](evidence/version-comparison-2026-10-13.json)。
+
 ## 14:13 正式发布与验收完成
 
 用户明确表示“不需要备份原来的内容，直接搞就可以”，授权跳过备份继续修复。本次没有创建或验证生产备份，也没有清空数据；使用已通过隔离测试的事务 SQL，分别在两个项目的**生产环境**补列、回填和设置非空，然后发布各自已保存的版本。

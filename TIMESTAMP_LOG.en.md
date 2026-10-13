@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 14:48 · Production sites compared with GitHub source
+
+- Baseline main `a8a439f` / 0.7.0. All 21 scoped core files, including every backend file, in project 2's deployed `7ce857c` match main. Production JS/CSS exactly match the fresh build from this inspection.
+- The original's deployed `c9a56d8` / 0.8.0 differs in six core files, including optional school/name and legacy activity fields plus unsigned-identity display. Authentication, database migration, and activity definitions match main. Platform 0.8.0 changes were not imported upstream.
+- Read-only production/deployed-source inspection is recorded with [scope, method, failed attempt, and results](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) and [sanitized fingerprints](deploy/evidence/version-comparison-2026-10-13.json). No production data, password, pacing, or release changed. GitHub receives only this audit record; runtime version remains 0.7.0.
+
 ## 2026-10-13 14:20 · Deployment repair and acceptance records merged into main
 
 - [PR #4](https://github.com/bd4rex/ai-classroom-workshop/pull/4) merged as `402d0bcc7f1463c8b472ad27fd9dbf9b8cffc54e`. GitHub's MERGED state and remote main were read back, and local main was fast-forwarded. This entry is a follow-up handoff commit.

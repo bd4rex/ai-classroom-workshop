@@ -2,6 +2,21 @@
 
 [中文](DEBUGGING_COZE_DEPLOY_2026-10-13.md) · [Deployment guide](coze.en.md) · [Handoff log](../TIMESTAMP_LOG.en.md)
 
+## Code alignment with GitHub main verified at 14:48
+
+The baseline was GitHub main `a8a439f`, package version 0.7.0. Remote main was re-read at the end and remained unchanged. Checked production health, actual public JS/CSS, and source fingerprints from the immutable deployed Coze revisions. No source, database, or deployment was changed.
+
+| Target | Actual version / deployed revision | Relationship to GitHub main |
+| --- | --- | --- |
+| Project 2: `ai5class.coze.site` | 0.7.0 / `7ce857c` | All 21 scoped core files match; production JS and CSS exactly match a fresh clean-main build |
+| Original: `ai4class.coze.site` | 0.8.0 / `c9a56d8` | 15 of 21 scoped files match and six differ; production JS differs, CSS matches |
+
+The scope covers all five `server/` files, `shared/`, `src/`, `config/`, `public/`, `index.html`, `vite.config.js`, `package.json`, and `package-lock.json`. SHA-256 of `git ls-tree -r <deployed revision> -- <paths>` is `4dd0bdf5f818a8a04fcd0e40e86a789c878aca960ffb6c7420c57ac4aec3497a` for both project 2 and the GitHub baseline. This establishes application source equality, not identical platform configuration, maintenance documentation, complete container images, or installed dependencies.
+
+The original differs in `server/app.js`, `server/store.js`, `src/App.jsx`, `src/Presentation.jsx`, `package.json`, and `package-lock.json`. Its public bundle and backend `app.js` blob diff confirm optional school/name, an unsigned-identity display, and optional legacy Discover/Design fields for domain, scenario, value, and basic functionality. GitHub and project 2 retain required fields. Authentication, database migration, server entrypoint, and shared activity definitions match the baseline; these existing mechanisms are not unique 0.8.0 changes.
+
+Project 2's Coze repository lacks the upstream `3a98f56` commit object, so direct commit diff returned bad revision. Immutable deployed-file blobs and the deterministic tree fingerprint completed the comparison without fetching, overwriting, or merging. When the user was using Chrome, inspection resumed after explicit permission to switch tabs. Only development sandboxes were reconnected and read-only Git commands run. The original project's source differences were not imported into GitHub. File and asset fingerprints are recorded in [sanitized comparison evidence](evidence/version-comparison-2026-10-13.json).
+
 ## Production release and acceptance completed at 14:13
 
 The user explicitly authorized proceeding without backing up the original content. No production backup was created or validated, and no data was cleared. The isolated-tested transaction added and backfilled the column and enforced NOT NULL separately in each project's **production environment**, followed by each project's own saved release.

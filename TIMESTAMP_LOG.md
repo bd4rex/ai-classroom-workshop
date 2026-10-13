@@ -2,6 +2,12 @@
 
 [English](TIMESTAMP_LOG.en.md) · [返回说明](README.md)
 
+## 2026-10-13 14:48 · 两个正式网站与 GitHub 的源码对照
+
+- 基准 main `a8a439f` / 0.7.0。网站 2 已部署 `7ce857c` 的 21 个核心文件（含全部后端文件）与 main 指纹完全一致；正式 JS/CSS 与本轮新构建逐字节一致。
+- 原项目已部署 `c9a56d8` / 0.8.0，其中 6 个核心文件不同，确认包含学校／姓名与旧活动字段选填、未署名显示；其鉴权、数据库迁移及活动定义等文件与 main 相同。平台 0.8.0 的改动未同步入上游。
+- 本轮只读核对生产与部署源码，记录[范围、方法、失败尝试及结果](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.md)和[脱敏指纹](deploy/evidence/version-comparison-2026-10-13.json)。没有更改线上数据、密码、课堂节奏或部署；GitHub 仅新增本次核对记录，运行版本仍为 0.7.0。
+
 ## 2026-10-13 14:20 · 部署修复与验收记录合并 main
 
 - [PR #4](https://github.com/bd4rex/ai-classroom-workshop/pull/4) 已合并，合并提交 `402d0bcc7f1463c8b472ad27fd9dbf9b8cffc54e`。已回读 GitHub `MERGED` 状态、远端 main，并将本地 main 快进同步；本条作为后续交接记录提交。

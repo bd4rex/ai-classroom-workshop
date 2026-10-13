@@ -1,0 +1,125 @@
+{
+  "observedAt": "2026-10-13T06:32:02.223Z",
+  "githubMain": "a8a439fd8b362043f0a47186017a93f194158cdf",
+  "githubVersion": "0.7.0",
+  "method": "Fresh build from clean verified main; SHA-256 of public production JavaScript and CSS",
+  "mainAssets": {
+    "css": "621e9ab0d670ce65932e4c14a1d9f8ee54ee6a12236034bc78ba91ca269d1d26",
+    "js": "aeed22cf2e955983e30b4150cd7313d21f21e73742256fe5c9c23e0694a81572"
+  },
+  "sites": [
+    {
+      "origin": "https://ai4class.coze.site",
+      "version": "0.8.0",
+      "assets": {
+        "js": "288dcb9a351e2d44e966ba001d77eef305ea61dc7f3a678018787b98903a3b3b",
+        "css": "621e9ab0d670ce65932e4c14a1d9f8ee54ee6a12236034bc78ba91ca269d1d26"
+      },
+      "frontendMatchesMain": false,
+      "backendSourceComparison": "15 of 21 scoped core files match; six files differ; server/app.js blob diff confirms optional identity and legacy content validation",
+      "productionChanged": false,
+      "deployedRevision": "c9a56d8a5d64d910230f4367dc2b28a7fc957209",
+      "matchingCoreFiles": 15,
+      "differingCoreFiles": [
+        {
+          "path": "package-lock.json",
+          "githubBlob": "cd305a148d0ba17ef5b959caa1d47a5ff2c0828b",
+          "deployedBlob": "420f04dd26b65fbd5b1f71e1a910e045e43e1634"
+        },
+        {
+          "path": "package.json",
+          "githubBlob": "7d4aedf1a8025dca033fc773f656669ddef5c73d",
+          "deployedBlob": "0c1fc8417e0aea693aa2206c44594e89f990ed8d"
+        },
+        {
+          "path": "server/app.js",
+          "githubBlob": "0b6c052c17659216bb6905b040a380dd6f5866c8",
+          "deployedBlob": "8cfaf3429fed4c36338581a5ae51f9471b39f10d"
+        },
+        {
+          "path": "server/store.js",
+          "githubBlob": "9fb4724b80c4c5dedcbdca5d1c9761ba26b6b486",
+          "deployedBlob": "a1eb53932c12fbc73c9db6236578e45b2e096ffa"
+        },
+        {
+          "path": "src/App.jsx",
+          "githubBlob": "e2326a443875496094571307f6f58c26680ae6d5",
+          "deployedBlob": "bab58850c9a330f45346fbec9c62a3e3b89d4203"
+        },
+        {
+          "path": "src/Presentation.jsx",
+          "githubBlob": "bb8f22b91c46263578ac03bf0d0a61c97a8c50d5",
+          "deployedBlob": "60cc40ba60181971ee973e551af9e2201fee8716"
+        }
+      ]
+    },
+    {
+      "origin": "https://ai5class.coze.site",
+      "version": "0.7.0",
+      "assets": {
+        "js": "aeed22cf2e955983e30b4150cd7313d21f21e73742256fe5c9c23e0694a81572",
+        "css": "621e9ab0d670ce65932e4c14a1d9f8ee54ee6a12236034bc78ba91ca269d1d26"
+      },
+      "frontendMatchesMain": true,
+      "backendSourceComparison": "All 21 scoped core files match verified GitHub main; cloud git ls-tree SHA-256 matches",
+      "productionChanged": false,
+      "deployedRevision": "7ce857c23926253d65b5e9bfb139cd74e62efd93",
+      "sourceTreeFingerprintSha256": "4dd0bdf5f818a8a04fcd0e40e86a789c878aca960ffb6c7420c57ac4aec3497a",
+      "matchingCoreFiles": 21,
+      "differingCoreFiles": []
+    }
+  ],
+  "confirmedAi4FrontendDifferences": [
+    "school and name are optional",
+    "unsigned identity fallback",
+    "legacy discover/design fields are optional"
+  ],
+  "verifiedAt": "2026-10-13T14:48:19+08:00",
+  "scope": {
+    "trackedCoreFiles": 21,
+    "paths": [
+      "server",
+      "shared",
+      "src",
+      "config",
+      "public",
+      "package.json",
+      "package-lock.json",
+      "index.html",
+      "vite.config.js"
+    ],
+    "githubMainTreeFingerprintSha256": "4dd0bdf5f818a8a04fcd0e40e86a789c878aca960ffb6c7420c57ac4aec3497a",
+    "baselineBlobIds": {
+      "config/schools.json": "07f6962a2bb8aa9912a0389a7a12e1a628769890",
+      "index.html": "56ef1be9d9516ed86c08ff417858640dadd48759",
+      "package-lock.json": "cd305a148d0ba17ef5b959caa1d47a5ff2c0828b",
+      "package.json": "7d4aedf1a8025dca033fc773f656669ddef5c73d",
+      "public/favicon.svg": "8da39d202eae26e11083fde9ac5c3a6e1a15f915",
+      "server/app.js": "0b6c052c17659216bb6905b040a380dd6f5866c8",
+      "server/auth.js": "6714c6c1a566e56b7d012d019ea68eb92fa2c841",
+      "server/database.js": "57632528e391c7d16450564251e196e5370979d3",
+      "server/index.js": "efd83298b25cdde3788ee09302dc3538c2320fe8",
+      "server/store.js": "9fb4724b80c4c5dedcbdca5d1c9761ba26b6b486",
+      "shared/activities.js": "abe7af24ac47d0642ed25e9e6655a169d609ed90",
+      "src/App.jsx": "e2326a443875496094571307f6f58c26680ae6d5",
+      "src/Presentation.jsx": "bb8f22b91c46263578ac03bf0d0a61c97a8c50d5",
+      "src/api.js": "4d54321cbe6727309c85e3810439fa8d44c2a71f",
+      "src/live-connection.js": "a9450b9999808c4d8b97bdb78df1b011ae410ee1",
+      "src/main.jsx": "4cd82b3dcc4970f8263fea41cb30a9acc029a053",
+      "src/presentation.css": "1d1291a4b9307c3136129f170cfc311707bf5143",
+      "src/refresh-queue.js": "3e6ab13b68db933c08d33bbe425d237b2f54e914",
+      "src/styles.css": "3867c3abe6f1909e96150d1414e6ed9dce843fb4",
+      "src/word-layout.js": "a356c09f90ef51888b2d7944148c17544c9bc6f9",
+      "vite.config.js": "7964f1237afc15711d472902b9ba810ec5c2d9de"
+    },
+    "fullDeploymentImageOrInstalledDependenciesCompared": false,
+    "documentationAndPlatformFilesIdenticalClaimed": false
+  },
+  "inspectionNotes": [
+    "Public health and assets checked independently of development preview",
+    "Coze terminal commands inspected immutable deployed revisions; no source edits or releases",
+    "Project 2 lacks upstream commit 3a98f56 in its object database; comparison therefore uses blob IDs and a deterministic ls-tree fingerprint",
+    "Coze development sandboxes were reconnected for read-only inspection",
+    "Production database, passwords, classroom pacing, and resource settings were not changed"
+  ]
+}
