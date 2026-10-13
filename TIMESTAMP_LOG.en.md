@@ -2,6 +2,20 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 14:13 · Both Coze projects repaired and accepted in production
+
+- The user explicitly waived backup. Ran the tested transactional `activity_id` pre-migration separately in both production databases without clearing responses. Independent aggregates confirmed one populated record / zero visible in project 2 and 16 populated / 14 visible in the original. Rooms were waiting or ended, followed immediately by release; not every container was separately stopped.
+- Released platform revision `7ce857c` / 0.7.0 in project 2 and added production `REQUIRE_SHARED_DATABASE=true`. Released the original project's own `c9a56d8` / 0.8.0, preserving its platform changes. Passwords, replica counts, concurrency settings, and pacing were unchanged.
+- Both production health endpoints returned HTTP 200 / PostgreSQL / polling. Existing-password login, 10 consecutive teacher reads per site, browser session after refresh, and fixed student entry passed. The original remains waiting; project 2 remains ended. No activities or synthetic student responses were added.
+- Updated [execution, sandbox troubleshooting, and waiver boundaries](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), paired validation, and sanitized evidence in PR #4. No backup was created or validated, no complete old-SQLite audit or production 500-user load was performed. This repository's runtime remains 0.7.0.
+
+## 2026-10-13 12:45 · Investigation of two failed Coze releases
+
+- Raw logs confirmed both failures occur during platform schema synchronization: `activity_id NOT NULL` encounters old records and raises `23502` before application backfill. The original production site remains 0.4.0 and project 2 remains 0.5.0; pending platform releases are 0.8.0 and 0.7.0 respectively. GitHub main was `3a98f56` / 0.7.0.
+- Production SELECT aggregates: original project 16 records (14 visible, two receipts), project 2 one record (zero visible, one receipt); both lack the new column. The old site's health omits storage, so its actual data source and restorable backup still need verification before upgrade. No deletion, production migration, credential/replica change, or deployment was performed.
+- Added a [paired investigation record](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), read-only preflight, transactional pre-migration SQL requiring backup/write suspension, isolated regression, and sanitized evidence. Corrected the Coze prerequisite for automatic application migration and stale check counts.
+- SQLite: 51 passed / six skipped. PostgreSQL: all 57 passed. Syntax and build passed. Runtime logic and version are unchanged. Records are on `codex/coze-deployment-diagnosis`; production repair and post-release domain acceptance remain unperformed.
+
 ## 2026-10-13 11:55 · Editable activity release merged into main
 
 - At the user's request, [PR #3](https://github.com/bd4rex/ai-classroom-workshop/pull/3) merged into `main` at 11:55 Asia/Shanghai as `4588745471593c4a11c19cc50d11ca74bfd2139f`. GitHub's `MERGED` state and remote main were read back, and local main was fast-forwarded to match.

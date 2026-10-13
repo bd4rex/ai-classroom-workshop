@@ -1,8 +1,10 @@
 # AI Classroom Workshop
 
-[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Activity management](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md) · [Deployment investigation](deploy/DEBUGGING_2026-09-23.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
+[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Activity management](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md) · [Latest deployment investigation](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
 One teacher, one classroom, freely arranged true/false, single-choice, and word-cloud activities. Each lesson supports up to 50 activities, including repeated types. The teacher controls access and pacing. Students follow a fixed link and submit independently before unlocking the current activity’s pie chart or word cloud on the right.
+
+2026-10-13 deployment record: both production Coze projects completed schema pre-migration, release, and production-domain acceptance, running 0.7.0 and a separate platform-side 0.8.0 respectively. See the [actual release record](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) for version differences, execution, and acceptance boundaries.
 
 This independent simplification of [Tongpin Classroom Feedback](https://github.com/bd4rex/tongpin-classroom-feedback) uses its own repository and storage. React + Fastify supports SQLite/SSE for a local single process and shared PostgreSQL/polling for multiple replicas. There are no external AI calls, general question banks, grading, or school administration.
 

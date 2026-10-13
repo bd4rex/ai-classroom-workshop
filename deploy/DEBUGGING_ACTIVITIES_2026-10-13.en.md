@@ -50,6 +50,8 @@ Open QA `/teacher`, sign in, add a second true/false activity, and copy the stud
 
 ## Upgrade and rollback
 
+Addendum: Coze synchronizes schema before application startup. Production storage with existing submissions and no `activity_id` requires [maintenance pre-migration](DEBUGGING_COZE_DEPLOY_2026-10-13.en.md). Automatic migration below assumes platform schema synchronization has succeeded; it does not establish readiness of an unprepared old database.
+
 1. Schedule a lesson outage, stop writes from every old instance, and fully back up the actual database. Record classroom ID, counts, version, and sign-in behavior. Copy the entire stopped SQLite data directory or take a consistent PostgreSQL backup.
 2. Run 0.7.0 on all instances while retaining existing storage and production configuration. Initialization migrates automatically; do not recreate the classroom or re-import an existing PostgreSQL database.
 3. Check production `/api/health` for 0.7.0 and the intended storage/sync mode. Verify the original password, link, responses, and activity order; exercise mutations and cross-instance following in a dedicated test classroom.

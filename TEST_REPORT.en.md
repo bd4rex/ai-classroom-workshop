@@ -2,6 +2,21 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-13 14:13 · Acceptance after both production Coze releases
+
+- After the user's backup waiver, transactional pre-migration completed in both production databases. Total / populated / visible counts were 1 / 1 / 0 in project 2 and 16 / 16 / 14 in the original, with no deletion or development-data import.
+- Production `ai5class.coze.site` runs 0.7.0 (platform revision `7ce857c`); `ai4class.coze.site` runs 0.8.0 (platform revision `c9a56d8`). Both health endpoints return HTTP 200, PostgreSQL, and polling. The reported `23502` no longer blocks platform schema synchronization and release.
+- Each site's existing-password login returned HTTP 200; all 10 authenticated teacher reads succeeded with a stable classroom ID. Real-browser login, session after refresh, and periodic synchronization display passed. Fixed student links show ended / waiting states respectively, without an invalid-classroom error.
+- Passwords, pacing, and existing resource settings were retained; only project 2 needed the shared-database guard variable. No production activities or synthetic responses were created/deleted, not every historic link was checked, and no 500-user production load ran. Runtime code was unchanged, so the previously passing 57 local tests were not repeated.
+- The [execution record](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md) and [sanitized evidence](deploy/evidence/coze-deployment-2026-10-13.json) separate initial read-only inspection from the actual releases. Browser proof remains in a local ignored directory.
+
+## 2026-10-13 12:45 · Coze schema-first failure and pre-migration preparation
+
+- Read-only production queries and raw deployment logs confirmed missing `activity_id` and schema-sync error `23502` in both projects; public health still reported 0.5.0 and 0.4.0 respectively. No production schema/data, credentials, replicas, or release changed.
+- A new isolated PostgreSQL reproduction fails on direct NOT NULL synchronization, then validates the delivered transactional backfill, preservation of all seven old columns and other tables, cleared removal receipts, repeatability, and existing custom IDs. Subsequent application migration supports repeated-type activity records.
+- `npm run check`: 51 of 57 passed, six expected skips; syntax and build passed. `npm test` with local `TEST_DATABASE_URL`: all 57 passed.
+- Added the [cause, maintenance sequence, and boundaries](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), [read-only SQL](deploy/sql/coze-activity-id-preflight.sql), [maintenance SQL](deploy/sql/coze-activity-id-premigration.sql), and [sanitized evidence](deploy/evidence/coze-deployment-2026-10-13.json). Maintenance SQL has not run in production; full backup and stopping all old writers are prerequisites.
+
 ## 2026-10-13 · 0.7.0 editable activity lists
 
 - SQLite `npm test`: 51 of 56 passed, five PostgreSQL-only checks skipped. Local shared PostgreSQL: all 56 passed. Syntax and production build passed; no dependencies added.
