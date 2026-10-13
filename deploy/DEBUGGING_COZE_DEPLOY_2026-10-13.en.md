@@ -2,7 +2,29 @@
 
 [中文](DEBUGGING_COZE_DEPLOY_2026-10-13.md) · [Deployment guide](coze.en.md) · [Handoff log](../TIMESTAMP_LOG.en.md)
 
-## Verified state
+## Production release and acceptance completed at 14:13
+
+The user explicitly authorized proceeding without backing up the original content. No production backup was created or validated, and no data was cleared. The isolated-tested transaction added and backfilled the column and enforced NOT NULL separately in each project's **production environment**, followed by each project's own saved release.
+
+| Project | Deployed revision | Production health | Post-pre-migration total / populated / visible | Production UI acceptance |
+| --- | --- | --- | --- | --- |
+| AI教室工作坊网站 2 | `7ce857c23926253d65b5e9bfb139cd74e62efd93` | HTTP 200, 0.7.0, PostgreSQL / polling | 1 / 1 / 0 | Existing password, session after refresh, and all 10 authenticated reads passed; fixed student link shows the ended lesson |
+| AI课堂工作坊网站 | `c9a56d8a5d64d910230f4367dc2b28a7fc957209` | HTTP 200, 0.8.0, PostgreSQL / polling | 16 / 16 / 14 | Existing password, session after refresh, and all 10 authenticated reads passed; fixed student link shows the waiting lesson |
+
+Acceptance was verified at 14:13 on 2026-10-13, Asia/Shanghai. The original project's separate 0.8.0 changes were retained. This repository's runtime remains 0.7.0; upstream did not overwrite that project. Both teacher pages display periodic classroom synchronization and three activities. Repeated reads return one stable classroom per project. Student links do not report an invalid classroom. This operation did not reset pacing, current classroom IDs, or passwords.
+
+Execution and troubleshooting:
+
+1. Rechecked production counts and classroom state: neither database had a classroom accepting activity submissions; existing rooms were waiting or ended. Used this inactive window for pre-migration and immediate release, without separately stopping every container or changing classroom pacing.
+2. Created separate SQL queries in each production panel and executed the entire BEGIN-to-COMMIT transaction, which only handles `activity_id`. Independent SELECT queries then verified the counts above. Existing drafts were preserved; no DELETE/TRUNCATE or development-data copy was performed.
+3. A disconnected Coze development sandbox temporarily prevented the release-version list from loading. Refreshing the sandbox and selecting the saved revision resolved that UI blocker. Development workspace connectivity is separate from production classroom polling.
+4. Project 2's old run command lacked the shared-database guard, so production variable `REQUIRE_SHARED_DATABASE=true` was added. Existing PostgreSQL auto-detection, polling, and remaining settings were retained. The original project already enabled the guard.
+5. Resource settings were retained as observed: project 2 had 1 CPU / 2 GB, two instances, concurrency 802; the original project had 4 CPU / 8 GB, one instance, concurrency 800. These are observed configuration values, not recommendations or measured capacity.
+6. After both releases succeeded, independently checked production health, existing-password login, and repeated teacher reads, then browser login, refresh, and teacher-provided student links. One duplicate paste in the original site's browser login produced an incorrect-password message; clearing the field and entering the same password succeeded. No password reset was performed.
+
+Production acceptance added no student responses, changed no activities or classroom lifecycle, and did not apply a 500-user load. Counts are production PostgreSQL aggregates immediately after pre-migration, not a complete audit of any older SQLite files. No old SQLite files were restored or imported. This does not establish preservation of every historic distributed link or instance-local record. UI proof remains in a local ignored directory; GitHub contains only [sanitized acceptance evidence](evidence/coze-deployment-2026-10-13.json), without student content, sessions, or credentials.
+
+## Initial read-only observations at 12:45
 
 On 2026-10-13, inspected raw deployment logs, public health endpoints, and read-only production database queries in the user's open Coze projects. These are observations, not a subsequent release claim.
 
@@ -37,7 +59,7 @@ Previous tests covered application-startup migration but omitted platform schema
 
 ## Data-preserving maintenance sequence
 
-This procedure was validated in an isolated database. **It has not been executed against either production database, and neither project was redeployed.**
+This general procedure was prepared during the initial investigation. Both projects have now been repaired and released; see the 14:13 completion record above for the actual scope and the user's explicit backup waiver. That waiver is not a default for future deployments.
 
 1. Identify the project, domain, production database, running code, and actual data source separately. If the older site still writes SQLite, preserve its actual production files and reconcile existing PostgreSQL using the [storage migration guide](coze.en.md#preserve-existing-classrooms-and-responses); do not overwrite or repeat import.
 2. Stop all old instances and other submission writers during maintenance and obtain a restorable full backup. Response CSV is not a substitute for sessions, credentials, and metadata. The original project's database overview displayed a zero-hour restore window; no available recovery point was validated, so a backup must be established first.
@@ -71,4 +93,4 @@ npm run check
 npm test
 ```
 
-See [sanitized evidence](evidence/coze-deployment-2026-10-13.json) for results and commands. Application runtime code, version, production credentials, replicas, and data were not changed. Local SQL validation is not completed Coze deployment.
+See [sanitized evidence](evidence/coze-deployment-2026-10-13.json) for results and commands. Initial investigation did not modify production; subsequent production repair and acceptance are recorded separately at the top of this page. Neither stage changed this repository's runtime code/version, production passwords, or instance settings. Local SQL tests and production-domain acceptance remain distinct evidence.

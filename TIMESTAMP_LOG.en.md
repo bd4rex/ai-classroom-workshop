@@ -2,6 +2,13 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 14:13 · Both Coze projects repaired and accepted in production
+
+- The user explicitly waived backup. Ran the tested transactional `activity_id` pre-migration separately in both production databases without clearing responses. Independent aggregates confirmed one populated record / zero visible in project 2 and 16 populated / 14 visible in the original. Rooms were waiting or ended, followed immediately by release; not every container was separately stopped.
+- Released platform revision `7ce857c` / 0.7.0 in project 2 and added production `REQUIRE_SHARED_DATABASE=true`. Released the original project's own `c9a56d8` / 0.8.0, preserving its platform changes. Passwords, replica counts, concurrency settings, and pacing were unchanged.
+- Both production health endpoints returned HTTP 200 / PostgreSQL / polling. Existing-password login, 10 consecutive teacher reads per site, browser session after refresh, and fixed student entry passed. The original remains waiting; project 2 remains ended. No activities or synthetic student responses were added.
+- Updated [execution, sandbox troubleshooting, and waiver boundaries](deploy/DEBUGGING_COZE_DEPLOY_2026-10-13.en.md), paired validation, and sanitized evidence in PR #4. No backup was created or validated, no complete old-SQLite audit or production 500-user load was performed. This repository's runtime remains 0.7.0.
+
 ## 2026-10-13 12:45 · Investigation of two failed Coze releases
 
 - Raw logs confirmed both failures occur during platform schema synchronization: `activity_id NOT NULL` encounters old records and raises `23502` before application backfill. The original production site remains 0.4.0 and project 2 remains 0.5.0; pending platform releases are 0.8.0 and 0.7.0 respectively. GitHub main was `3a98f56` / 0.7.0.

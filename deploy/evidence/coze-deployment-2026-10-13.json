@@ -3,34 +3,6 @@
   "timezone": "Asia/Shanghai",
   "upstreamMain": "3a98f56a208cb71bb4032956b8cdf6a232379e01",
   "upstreamVersion": "0.7.0",
-  "projects": [
-    {
-      "title": "AI教室工作坊网站 2",
-      "origin": "https://ai5class.coze.site",
-      "healthStatus": 200,
-      "runningVersion": "0.5.0",
-      "runningRevision": "e396bbd0df",
-      "reportedStorage": "postgres",
-      "reportedSyncMode": "polling",
-      "failedRevision": "9032dd15712a910ddcfddecfd814c4b0a79b5b0e",
-      "failedVersion": "0.7.0",
-      "errorAt": "2026-10-13T12:06:30+08:00",
-      "productionPostgres": { "total": 1, "visible": 0, "removalReceipts": 1, "hasActivityId": false }
-    },
-    {
-      "title": "AI课堂工作坊网站",
-      "origin": "https://ai4class.coze.site",
-      "healthStatus": 200,
-      "runningVersion": "0.4.0",
-      "runningRevision": "cb1af78af4",
-      "reportedStorage": null,
-      "reportedSyncMode": null,
-      "failedRevision": "c9a56d8a5d64d910230f4367dc2b28a7fc957209",
-      "failedVersion": "0.8.0",
-      "errorAt": "2026-10-13T12:23:02+08:00",
-      "productionPostgres": { "total": 16, "visible": 14, "removalReceipts": 2, "hasActivityId": false }
-    }
-  ],
   "sharedError": {
     "stage": "platform production schema synchronization before application startup",
     "platformCode": "170000015",
@@ -39,9 +11,25 @@
   },
   "validation": {
     "data": "synthetic; isolated local PostgreSQL schema",
-    "targetedTest": { "file": "test/coze-upgrade.test.js", "passed": 1 },
-    "defaultCheck": { "command": "npm run check", "total": 57, "passed": 51, "skipped": 6, "failed": 0, "build": "passed" },
-    "postgres": { "command": "npm test with local TEST_DATABASE_URL", "total": 57, "passed": 57, "skipped": 0, "failed": 0 },
+    "targetedTest": {
+      "file": "test/coze-upgrade.test.js",
+      "passed": 1
+    },
+    "defaultCheck": {
+      "command": "npm run check",
+      "total": 57,
+      "passed": 51,
+      "skipped": 6,
+      "failed": 0,
+      "build": "passed"
+    },
+    "postgres": {
+      "command": "npm test with local TEST_DATABASE_URL",
+      "total": 57,
+      "passed": 57,
+      "skipped": 0,
+      "failed": 0
+    },
     "reproducedSqlstate": "23502",
     "maintenanceSqlValidated": true,
     "originalColumnsPreserved": true,
@@ -50,14 +38,167 @@
     "existingActivityIdsPreserved": true,
     "repeatable": true
   },
-  "boundaries": {
-    "productionInspection": "read-only SQL and public health",
-    "productionDatabaseModified": false,
-    "productionRedeployed": false,
-    "productionBackupValidated": false,
-    "oldSiteActiveStorageVerified": false,
-    "runtimeCodeChanged": false,
-    "platformMigrationPipelineRetested": false,
-    "studentContentOrCredentialsIncluded": false
+  "initialInspection": {
+    "projects": [
+      {
+        "title": "AI教室工作坊网站 2",
+        "origin": "https://ai5class.coze.site",
+        "healthStatus": 200,
+        "runningVersion": "0.5.0",
+        "runningRevision": "e396bbd0df",
+        "reportedStorage": "postgres",
+        "reportedSyncMode": "polling",
+        "failedRevision": "9032dd15712a910ddcfddecfd814c4b0a79b5b0e",
+        "failedVersion": "0.7.0",
+        "errorAt": "2026-10-13T12:06:30+08:00",
+        "productionPostgres": {
+          "total": 1,
+          "visible": 0,
+          "removalReceipts": 1,
+          "hasActivityId": false
+        }
+      },
+      {
+        "title": "AI课堂工作坊网站",
+        "origin": "https://ai4class.coze.site",
+        "healthStatus": 200,
+        "runningVersion": "0.4.0",
+        "runningRevision": "cb1af78af4",
+        "reportedStorage": null,
+        "reportedSyncMode": null,
+        "failedRevision": "c9a56d8a5d64d910230f4367dc2b28a7fc957209",
+        "failedVersion": "0.8.0",
+        "errorAt": "2026-10-13T12:23:02+08:00",
+        "productionPostgres": {
+          "total": 16,
+          "visible": 14,
+          "removalReceipts": 2,
+          "hasActivityId": false
+        }
+      }
+    ],
+    "boundaries": {
+      "productionInspection": "read-only SQL and public health",
+      "productionDatabaseModified": false,
+      "productionRedeployed": false,
+      "productionBackupValidated": false,
+      "oldSiteActiveStorageVerified": false,
+      "runtimeCodeChanged": false,
+      "platformMigrationPipelineRetested": false,
+      "studentContentOrCredentialsIncluded": false
+    }
+  },
+  "productionRepair": {
+    "verifiedAt": "2026-10-13T14:13:35+08:00",
+    "backupWaivedByUser": true,
+    "backupCreated": false,
+    "sqlFile": "deploy/sql/coze-activity-id-premigration.sql",
+    "sqlChanges": [
+      "add activity_id if absent",
+      "backfill NULL from kind",
+      "set NOT NULL"
+    ],
+    "productionDataDeleted": false,
+    "developmentDataCopied": false,
+    "containersSeparatelyStopped": false,
+    "acceptingActivityRoomsBeforeMigration": [
+      0,
+      0
+    ],
+    "projects": [
+      {
+        "title": "AI教室工作坊网站 2",
+        "origin": "https://ai5class.coze.site",
+        "deployedRevision": "7ce857c23926253d65b5e9bfb139cd74e62efd93",
+        "health": {
+          "status": 200,
+          "ok": true,
+          "version": "0.7.0",
+          "storage": "postgres",
+          "syncMode": "polling"
+        },
+        "postPremigrationCounts": {
+          "total": 1,
+          "activityIdPopulated": 1,
+          "visible": 0,
+          "removalReceipts": 1
+        },
+        "productionEnvironmentAdded": {
+          "REQUIRE_SHARED_DATABASE": "true"
+        },
+        "resourcesObservedAndUnchanged": {
+          "cpu": 1,
+          "memoryGB": 2,
+          "instances": 2,
+          "concurrency": 802
+        },
+        "acceptance": {
+          "loginStatus": 200,
+          "authenticatedReads": 10,
+          "failedReads": 0,
+          "distinctClassrooms": 1,
+          "activityCount": 3,
+          "browserLogin": true,
+          "browserRefreshSession": true,
+          "teacherSyncDisplay": "polling",
+          "fixedStudentLinkOpens": true,
+          "classroomStageUnchanged": "ended"
+        }
+      },
+      {
+        "title": "AI课堂工作坊网站",
+        "origin": "https://ai4class.coze.site",
+        "deployedRevision": "c9a56d8a5d64d910230f4367dc2b28a7fc957209",
+        "health": {
+          "status": 200,
+          "ok": true,
+          "version": "0.8.0",
+          "storage": "postgres",
+          "syncMode": "polling"
+        },
+        "postPremigrationCounts": {
+          "total": 16,
+          "activityIdPopulated": 16,
+          "visible": 14,
+          "removalReceipts": 2
+        },
+        "productionEnvironmentAdded": {},
+        "sharedDatabaseGuardAlreadyEnabled": true,
+        "resourcesObservedAndUnchanged": {
+          "cpu": 4,
+          "memoryGB": 8,
+          "instances": 1,
+          "concurrency": 800
+        },
+        "acceptance": {
+          "loginStatus": 200,
+          "authenticatedReads": 10,
+          "failedReads": 0,
+          "distinctClassrooms": 1,
+          "activityCount": 3,
+          "browserLogin": true,
+          "browserRefreshSession": true,
+          "teacherSyncDisplay": "polling",
+          "fixedStudentLinkOpens": true,
+          "classroomStageUnchanged": "waiting"
+        }
+      }
+    ],
+    "boundaries": {
+      "productionDatabaseModified": true,
+      "productionRedeployed": true,
+      "platformMigrationPipelineRetested": true,
+      "productionPasswordsChanged": false,
+      "productionResourcesChanged": false,
+      "classroomLifecycleChanged": false,
+      "productionSyntheticSubmissionsAdded": false,
+      "productionActivityMutationsTested": false,
+      "productionLoadTestPerformed": false,
+      "oldSitePreUpgradeStorageVerified": false,
+      "oldSQLiteImported": false,
+      "allHistoricalStudentLinksValidated": false,
+      "runtimeCodeChangedInGitHub": false,
+      "studentContentOrCredentialsIncluded": false
+    }
   }
 }
