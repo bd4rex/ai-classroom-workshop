@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 11:55 · Editable activity release merged into main
+
+- At the user's request, [PR #3](https://github.com/bd4rex/ai-classroom-workshop/pull/3) merged into `main` at 11:55 Asia/Shanghai as `4588745471593c4a11c19cc50d11ca74bfd2139f`. GitHub's `MERGED` state and remote main were read back, and local main was fast-forwarded to match.
+- The merged head is validated commit `bae0264`, containing add/reorder/delete controls for the three activity types, independent results, and compatible data upgrades. Before merging, the working tree was clean, the PR head matched the tested commit, and source fingerprints matched the validation summary. No functional changes were made and previously passing checks were not repeated.
+- This entry is a follow-up documentation commit on main. Coze production has not been deployed to 0.7.0; the local demo remains running. No production database, password, or instance configuration was changed. Actual upgrades require a backup, stopping old writers, and updating all instances together; see [upgrade and rollback](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md).
+
 ## 2026-10-13 11:31 · Editable lesson activities and independent results
 
 - Version 0.7.0 on `codex/editable-lesson-activities`: teachers add, delete, and reorder the three activity types, with repeated types and up to 50 items per lesson. The user confirmed permanent deletion of an activity and all responses; deleting the active item returns everyone to waiting.
