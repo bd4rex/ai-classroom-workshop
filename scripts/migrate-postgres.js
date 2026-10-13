@@ -56,7 +56,10 @@ export async function migrateSqlite(file, options, apply = false) {
             row.revision ??= 0;
             row.data_revision ??= 0;
           }
-          if (table === "submissions") row.deleted_at ??= null;
+          if (table === "submissions") {
+            row.deleted_at ??= null;
+            row.activity_id ??= row.kind;
+          }
           const keys = Object.keys(row);
           // Column names come from SQLite schema, still quote and validate them.
           if (keys.some((key) => !/^\w+$/.test(key)))

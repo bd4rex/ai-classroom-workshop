@@ -1769,7 +1769,7 @@ test("0.5 SQLite 约束升级保留删除回执、会话、课堂及自增序号
       id INTEGER PRIMARY KEY AUTOINCREMENT,room_id TEXT NOT NULL REFERENCES rooms(id),
       participant_id TEXT NOT NULL REFERENCES participants(id),kind TEXT NOT NULL CHECK(kind IN ('discover','design')),
       content TEXT NOT NULL,created_at INTEGER NOT NULL,deleted_at INTEGER,UNIQUE(participant_id,kind));
-    INSERT INTO old_submissions SELECT * FROM submissions;
+    INSERT INTO old_submissions SELECT id,room_id,participant_id,kind,content,created_at,deleted_at FROM submissions;
     DROP TABLE submissions;
     ALTER TABLE old_submissions RENAME TO submissions;
     UPDATE sqlite_sequence SET seq=200 WHERE name='submissions';
@@ -1801,4 +1801,411 @@ test("0.5 SQLite 约束升级保留删除回执、会话、课堂及自增序号
   assert.ok(row.id > 200);
   await f.restart();
   assert.equal((await f.app.store.room()).stage, "wordcloud");
+});
+
+async function activityChange(f, change, session = f.teacher) {
+  const room = await f.app.store.room();
+  return request(
+    f.app,
+    "POST",
+    "/api/teacher/activities",
+    {
+      roomId: room.id,
+      revision: room.revision,
+      ...change,
+    },
+    session,
+  );
+}
+async function addActivity(f, kind) {
+  const response = await activityChange(f, { action: "add", kind });
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json().createdActivityId;
+}
+async function editActivity(f, id, body) {
+  const room = await f.app.store.room();
+  return request(
+    f.app,
+    "POST",
+    `/api/teacher/activities/${id}`,
+    {
+      roomId: room.id,
+      revision: room.revision,
+      ...body,
+    },
+    f.teacher,
+  );
+}
+const resultsFor = (f, id, session, role = "student") =>
+  request(
+    f.app,
+    "GET",
+    `/api/results?kind=${id}&role=${role}`,
+    undefined,
+    session,
+  );
+
+test("同类型活动的配置、回执、阅读门槛、计数和 CSV 分别隔离", async (t) => {
+  const f = await fixture(t),
+    student = await f.student();
+  const judge2 = await addActivity(f, "judge"),
+    choice2 = await addActivity(f, "choice"),
+    cloud2 = await addActivity(f, "wordcloud");
+  assert.equal(
+    (
+      await editActivity(f, choice2, {
+        question: "第二道选择题",
+        options: ["第二题甲", "第二题乙"],
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await editActivity(f, cloud2, { question: "第二个词云" })).statusCode,
+    200,
+  );
+  const items = [
+    ["judge", { answer: "true", activityRevision: 1 }],
+    [judge2, { answer: "false", activityRevision: 1 }],
+    ["choice", { answer: "A", activityRevision: 1 }],
+    [choice2, { answer: "B", activityRevision: 2 }],
+    ["wordcloud", { words: "第一组", activityRevision: 1 }],
+    [cloud2, { words: "第二组", activityRevision: 2 }],
+  ];
+  await f.control({ action: "page", open: true });
+  for (const [id, answer] of items) {
+    await f.control({ action: "stage", stage: id });
+    assert.equal((await resultsFor(f, id, student)).statusCode, 403);
+    assert.equal(
+      (await f.submit(student, id, { ...profile(), ...answer })).statusCode,
+      200,
+    );
+    assert.equal((await f.submit(student, id, answer)).json().repeated, true);
+    assert.equal((await resultsFor(f, id, student)).json().total, 1);
+    assert.equal((await f.board(student, id)).json().rows.length, 1);
+  }
+  assert.equal((await resultsFor(f, "judge", student)).statusCode, 403);
+  const state = (
+    await request(f.app, "GET", "/api/student/state", undefined, student)
+  ).json();
+  assert.equal(state.activities.length, 6);
+  assert.equal(Object.keys(state.submissions).length, 6);
+  for (const [id] of items) assert.equal(state.counts[id], 1);
+  assert.equal(
+    (await resultsFor(f, judge2, f.teacher, "teacher"))
+      .json()
+      .options.find((x) => x.id === "false").count,
+    1,
+  );
+  assert.equal(
+    (await resultsFor(f, choice2, f.teacher, "teacher"))
+      .json()
+      .options.find((x) => x.id === "B").label,
+    "第二题乙",
+  );
+  assert.deepEqual(
+    (await resultsFor(f, cloud2, f.teacher, "teacher")).json().words,
+    [{ text: "第二组", count: 1 }],
+  );
+  assert.equal(
+    (
+      await editActivity(f, choice2, {
+        question: "不能偷换",
+        options: ["新甲", "新乙"],
+      })
+    ).statusCode,
+    409,
+  );
+  const choice3 = await addActivity(f, "choice");
+  assert.equal(
+    (
+      await editActivity(f, choice3, {
+        question: "新题可以编辑",
+        options: ["甲", "乙"],
+      })
+    ).statusCode,
+    200,
+  );
+  const csv = await request(
+    f.app,
+    "GET",
+    "/api/teacher/export",
+    undefined,
+    f.teacher,
+  );
+  assert.match(csv.body, /活动ID.*活动序号.*题干/);
+  assert.match(csv.body, new RegExp(`第二题乙.*${choice2}.*第二道选择题`));
+  await f.restart();
+  assert.equal((await resultsFor(f, cloud2, student)).json().total, 1);
+});
+
+test("活动增删排序检查权限、并发版本、完整顺序和数量上限", async (t) => {
+  const f = await fixture(t),
+    student = await f.student();
+  assert.equal(
+    (await activityChange(f, { action: "add", kind: "judge" }, student))
+      .statusCode,
+    401,
+  );
+  assert.equal(
+    (await activityChange(f, { action: "add", kind: "discover" })).statusCode,
+    400,
+  );
+  const stale = await f.app.store.room();
+  const added = await addActivity(f, "judge");
+  assert.equal(
+    (
+      await activityChange(f, {
+        action: "add",
+        kind: "judge",
+        revision: stale.revision,
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (await activityChange(f, { action: "delete", id: added })).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await activityChange(f, {
+        action: "reorder",
+        order: ["judge", "judge", "choice", "wordcloud"],
+      })
+    ).statusCode,
+    400,
+  );
+  const order = [added, "wordcloud", "judge", "choice"];
+  assert.equal(
+    (await activityChange(f, { action: "reorder", order })).statusCode,
+    200,
+  );
+  assert.deepEqual(
+    (await f.app.store.activities()).map((x) => x.id),
+    order,
+  );
+  await f.start(added);
+  assert.equal(
+    (
+      await activityChange(f, {
+        action: "reorder",
+        order: [...order].reverse(),
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await f.app.store.room()).stage,
+    added,
+    "排序不切换正在进行的活动",
+  );
+  for (let i = 4; i < 50; i++) await addActivity(f, "wordcloud");
+  assert.equal(
+    (await activityChange(f, { action: "add", kind: "choice" })).statusCode,
+    400,
+  );
+  assert.equal((await f.app.store.activities()).length, 50);
+  await f.control({ action: "end" });
+  assert.equal(
+    (await activityChange(f, { action: "delete", id: added, confirm: true }))
+      .statusCode,
+    409,
+  );
+});
+
+test("删除活动清除全部提交和移除回执；删除当前活动使全班等候，旧 ID 永久失效", async (t) => {
+  const f = await fixture(t),
+    a = await f.student(),
+    b = await f.student();
+  const second = await addActivity(f, "wordcloud");
+  await f.start("wordcloud");
+  for (const person of [a, b])
+    assert.equal(
+      (
+        await f.submit(person, "wordcloud", {
+          ...profile(),
+          words: "应清除的词",
+          activityRevision: 1,
+        })
+      ).statusCode,
+      200,
+    );
+  const firstRow = (
+    await f.board(f.teacher, "wordcloud", "&role=teacher")
+  ).json().rows[0];
+  await f.moderate([firstRow.id]);
+  await f.control({ action: "stage", stage: second });
+  assert.equal(
+    (await f.submit(a, second, { words: "保留的词", activityRevision: 1 }))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await activityChange(f, {
+        action: "delete",
+        id: "wordcloud",
+        confirm: true,
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal((await f.app.store.room()).stage, second);
+  assert.equal(
+    (
+      await f.app.store.get(
+        "SELECT COUNT(*) n FROM submissions WHERE activity_id=?",
+        "wordcloud",
+      )
+    ).n,
+    0,
+  );
+  assert.equal((await resultsFor(f, second, a)).json().total, 1);
+  assert.equal(
+    (await resultsFor(f, "wordcloud", f.teacher, "teacher")).statusCode,
+    404,
+  );
+  const csv = await request(
+    f.app,
+    "GET",
+    "/api/teacher/export",
+    undefined,
+    f.teacher,
+  );
+  assert.doesNotMatch(csv.body, /应清除的词/);
+  assert.match(csv.body, /保留的词/);
+  assert.equal(
+    (await activityChange(f, { action: "delete", id: second, confirm: true }))
+      .statusCode,
+    200,
+  );
+  const studentState = (
+    await request(f.app, "GET", "/api/student/state", undefined, a)
+  ).json();
+  assert.equal(studentState.room.stage, "waiting");
+  assert.equal(studentState.room.pageOpen, true);
+  assert.deepEqual(studentState.submissions, {});
+  assert.equal(
+    (await f.submit(a, second, { words: "不能复活", activityRevision: 1 }))
+      .statusCode,
+    404,
+  );
+  assert.equal((await f.board(a, second)).statusCode, 404);
+  assert.equal(
+    (await f.app.store.get("SELECT COUNT(*) n FROM submissions")).n,
+    0,
+  );
+  const third = await addActivity(f, "wordcloud");
+  assert.notEqual(third, second);
+  assert.notEqual(third, "wordcloud");
+  await f.control({ action: "stage", stage: third });
+  assert.equal((await resultsFor(f, third, a)).statusCode, 403);
+  await f.restart();
+  assert.equal(
+    (await resultsFor(f, second, f.teacher, "teacher")).statusCode,
+    404,
+  );
+});
+
+test("空活动列表在重启和新课后仍为空；新课堂继承顺序和题目，旧链接不串课", async (t) => {
+  const f = await fixture(t);
+  const added = await addActivity(f, "judge");
+  await editActivity(f, added, { question: "继承的判断题" });
+  const order = [added, "choice", "judge", "wordcloud"];
+  await activityChange(f, { action: "reorder", order });
+  const old = await f.app.store.room();
+  const created = await request(
+    f.app,
+    "POST",
+    "/api/teacher/new-room",
+    { roomId: old.id },
+    f.teacher,
+  );
+  assert.equal(created.statusCode, 200);
+  assert.notEqual(created.json().room.id, old.id);
+  assert.deepEqual(
+    created.json().activities.map((x) => x.id),
+    order,
+  );
+  assert.equal(created.json().activities[0].question, "继承的判断题");
+  assert.equal(created.json().activities[0].revision, 1);
+  assert.deepEqual(created.json().activityLocks, {});
+  for (const id of order)
+    assert.equal(
+      (await activityChange(f, { action: "delete", id, confirm: true }))
+        .statusCode,
+      200,
+    );
+  await f.restart();
+  assert.deepEqual(await f.app.store.activities(), []);
+  const current = await f.app.store.room();
+  const empty = await request(
+    f.app,
+    "POST",
+    "/api/teacher/new-room",
+    { roomId: current.id },
+    f.teacher,
+  );
+  assert.deepEqual(empty.json().activities, []);
+  assert.equal(
+    (await request(f.app, "POST", "/api/join", { classroomId: old.id })).json()
+      .ended,
+    true,
+  );
+  assert.ok(await addActivity(f, "judge"));
+});
+
+test("0.6 SQLite 固定题目和提交升级为独立活动，保留题干、登录、链接和同类型新提交", async (t) => {
+  const f = await fixture(t, { databaseUrl: "" }),
+    student = await f.student();
+  await editActivity(f, "judge", { question: "升级前的判断题" });
+  await f.start("judge");
+  assert.equal(
+    (
+      await f.submit(student, "judge", {
+        ...profile(),
+        answer: "true",
+        activityRevision: 2,
+      })
+    ).statusCode,
+    200,
+  );
+  const room = await f.app.store.room(),
+    settings = await f.app.store.activitySettings();
+  await f.app.store.setMeta(`activities:${room.id}`, settings);
+  await f.app.close();
+  const db = new DatabaseSync(join(f.dataDir, "classroom.sqlite"));
+  db.exec(`BEGIN;
+    CREATE TABLE old_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL REFERENCES rooms(id),
+      participant_id TEXT NOT NULL REFERENCES participants(id),kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
+      content TEXT NOT NULL,created_at INTEGER NOT NULL,deleted_at INTEGER,UNIQUE(participant_id,kind));
+    INSERT INTO old_submissions SELECT id,room_id,participant_id,kind,content,created_at,deleted_at FROM submissions;
+    DROP TABLE submissions; ALTER TABLE old_submissions RENAME TO submissions; COMMIT;`);
+  db.close();
+  await f.restart();
+  const state = (
+    await request(f.app, "GET", "/api/teacher/state", undefined, f.teacher)
+  ).json();
+  assert.equal(state.room.id, room.id);
+  assert.equal(state.room.stage, "judge");
+  assert.equal(state.activities[0].question, "升级前的判断题");
+  assert.equal((await resultsFor(f, "judge", student)).json().total, 1);
+  const added = await addActivity(f, "judge");
+  await f.control({ action: "stage", stage: added });
+  assert.equal((await resultsFor(f, added, student)).statusCode, 403);
+  assert.equal(
+    (await f.submit(student, added, { answer: "false", activityRevision: 1 }))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await f.app.store.get(
+        "SELECT COUNT(*) n FROM submissions WHERE kind='judge'",
+      )
+    ).n,
+    2,
+  );
 });

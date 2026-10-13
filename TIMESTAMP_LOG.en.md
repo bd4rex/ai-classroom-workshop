@@ -2,6 +2,14 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 11:31 · Editable lesson activities and independent results
+
+- Version 0.7.0 on `codex/editable-lesson-activities`: teachers add, delete, and reorder the three activity types, with repeated types and up to 50 items per lesson. The user confirmed permanent deletion of an activity and all responses; deleting the active item returns everyone to waiting.
+- Added activity IDs and participant/activity uniqueness while retaining existing activities, classrooms, links, sessions, and removal receipts. CSV includes activity ID, position, and prompt. Students retain 16:9 with current/total progress; teacher lists scroll.
+- SQLite: 51 passed / five skipped. PostgreSQL: all 56 passed. Build, syntax, and browser checks passed, including repeated-type isolation, empty lists, 50-activity single-screen presentation, 0.6 migration, and two-instance races.
+- Stopped and fully backed up the isolated 3218 demo before upgrade; all old columns for 18 participants and 54 responses matched, and its link remained. Added one editable example question. Earlier `output/local-preview` was untouched.
+- Updated paired README, validation, deployment/rollback documentation, [full investigation](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md), and sanitized evidence. No Coze release, Docker run, or production instance/password changes. All instances must upgrade together; code-only rollback is unsupported.
+
 ## 2026-10-13 10:43 · Three-activity release merged into main
 
 - At the user's request, [PR #2](https://github.com/bd4rex/ai-classroom-workshop/pull/2) merged into `main` at 10:43 Asia/Shanghai as `ad07065d391788b05e2ff6e908d66cfe15c64464`. GitHub's `MERGED` status and remote main were read back, and local main was fast-forwarded to the merge commit.

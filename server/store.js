@@ -2,7 +2,11 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { openDatabase } from "./database.js";
-import { defaultActivities, presentationKinds } from "../shared/activities.js";
+import {
+  allKinds,
+  normalizeActivities,
+  presentationKinds,
+} from "../shared/activities.js";
 
 export class AppError extends Error {
   constructor(message, statusCode = 400) {
@@ -73,12 +77,10 @@ export async function createStore(directory, options = {}) {
       if (settings)
         await setMeta(
           `activities:${id}`,
-          Object.fromEntries(
-            Object.entries(settings).map(([kind, value]) => [
-              kind,
-              { ...value, revision: 1 },
-            ]),
-          ),
+          normalizeActivities(settings).map((value) => ({
+            ...value,
+            revision: 1,
+          })),
         );
       return room(id);
     });
@@ -131,28 +133,33 @@ export async function createStore(directory, options = {}) {
   async function counts(id) {
     id ??= await meta("current");
     const rows = await all(
-      "SELECT kind,COUNT(*) n FROM submissions WHERE room_id=? AND deleted_at IS NULL GROUP BY kind",
+      "SELECT activity_id,COUNT(*) n FROM submissions WHERE room_id=? AND deleted_at IS NULL GROUP BY activity_id",
       id,
     );
     return {
       joined: (
         await get("SELECT COUNT(*) n FROM participants WHERE room_id=?", id)
       ).n,
-      discover: rows.find((r) => r.kind === "discover")?.n || 0,
-      design: rows.find((r) => r.kind === "design")?.n || 0,
       ...Object.fromEntries(
-        presentationKinds.map((kind) => [
-          kind,
-          rows.find((r) => r.kind === kind)?.n || 0,
+        [
+          ...new Set([
+            ...allKinds,
+            ...(await activities(id)).map((activity) => activity.id),
+          ]),
+        ].map((key) => [
+          key,
+          rows.find((row) => row.activity_id === key)?.n || 0,
         ]),
       ),
     };
   }
-  async function activitySettings(id) {
+  async function activities(id) {
     id ??= await meta("current");
-    return (
-      (id && (await meta(`activities:${id}`))) ||
-      structuredClone(defaultActivities)
+    return normalizeActivities(id && (await meta(`activities:${id}`)));
+  }
+  async function activitySettings(id) {
+    return Object.fromEntries(
+      (await activities(id)).map(({ id, kind, ...settings }) => [id, settings]),
     );
   }
   async function initialize(passwordFactory) {
@@ -180,6 +187,7 @@ export async function createStore(directory, options = {}) {
     newRoom,
     counts,
     activitySettings,
+    activities,
     transaction,
     lockCurrent,
     lockParticipant,

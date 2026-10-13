@@ -9,13 +9,13 @@
 3. Back up the platform's `.coze`, then adapt the [credential-free template](coze.toml.example). Restrict development `--watch-path` to avoid Vite restart loops. Production must require shared storage.
 4. Keep `DATABASE_SCHEMA=public` so platform schema synchronization can discover tables. Migrate existing data before starting the application. Empty storage creates a new classroom. Configure an initial password through the platform environment, outside Git; it never overwrites a stored password.
 5. Run `pnpm install` and `pnpm run check`. Default checks skip PostgreSQL-specific tests; use the safe test invocation below to validate shared storage.
-6. Development health must report version `0.6.0`, `storage: postgres`, and `syncMode: polling`. Open `/teacher` in a standalone tab, sign in, copy the student link, and exercise all three activities in another browser context.
+6. Development health must report version `0.7.0`, `storage: postgres`, and `syncMode: polling`. Open `/teacher` in a standalone tab, sign in, copy the student link, and exercise all three activities in another browser context.
 7. Select the production database when publishing. Do not copy development student exercises into a new production database or overwrite existing production data. These are separate databases.
 8. Validate the actual production domain after publishing. A deployment-success indicator does not replace health, session, and stable-link checks. Record commit, time, environment, outcomes, and remaining work.
 
 ## Existing-project upgrade order
 
-For a 0.5 → 0.6 upgrade on the same database, back up and stop writes, then start the new code; submission constraints migrate automatically, preserving IDs, sessions, and removal receipts. Do not run the SQLite-to-PostgreSQL importer again against an existing PostgreSQL database. The student view becomes a 16:9 browser presentation for the new activities; the teacher workspace remains scrollable. See [0.6 migration and validation](DEBUGGING_2026-10-13.en.md). The import procedure below applies when changing storage backends.
+When upgrading existing storage to 0.7, stop all old writers and take a complete backup, then start the new version on all instances together. Activity IDs, uniqueness constraints, and activity-array compatibility migrate automatically while retaining classroom IDs, sessions, and receipts. **Do not mix 0.6-or-older writers against upgraded storage; code-only rollback is unsupported.** Do not re-import an existing PostgreSQL database. Student presentation stays 16:9 and the teacher workspace scrollable. See [0.7 upgrade and rollback](DEBUGGING_ACTIVITIES_2026-10-13.en.md). The empty-database import below is only for changing storage backends.
 
 Proceed in order: **identify production source → stop writes and back up → inspect → import into empty target → compare original fields → update code/configuration → start → validate**. Do not initialize a fresh classroom before importing the old one.
 
@@ -71,7 +71,7 @@ Code cannot recover responses or classroom mappings from already-lost production
 
 ## Acceptance and rollback
 
-- Verify `/api/health` on the actual production origin: `storage: postgres`, `syncMode: polling`, version `0.6.0`.
+- Verify `/api/health` on the actual production origin: `storage: postgres`, `syncMode: polling`, version `0.7.0`.
 - Teacher authentication and shared links must survive alternating requests, refreshes, and replica restarts.
 - Unsubmitted students cannot read peers; students follow the teacher on the next poll; deletion removes content from both audiences and exports.
 - 500 students polling every 3 seconds average roughly 167 state requests per second, plus joins, submission bursts, and list requests.

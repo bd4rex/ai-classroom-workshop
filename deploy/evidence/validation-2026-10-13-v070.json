@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-13",
+  "version": "0.7.0",
+  "branch": "codex/editable-lesson-activities",
+  "scope": "Local isolated data only; no Coze production release or capacity acceptance",
+  "sqlite": {
+    "total": 56,
+    "passed": 51,
+    "failed": 0,
+    "skipped": 5
+  },
+  "postgresql": {
+    "total": 56,
+    "passed": 56,
+    "failed": 0,
+    "skipped": 0
+  },
+  "build": "passed",
+  "syntax": "passed",
+  "newDependencies": 0,
+  "browser": {
+    "addAllTypes": true,
+    "sameTypeIndependentResults": true,
+    "editOptions": true,
+    "reorder": true,
+    "automaticFollowing": true,
+    "deletionConfirmation": true,
+    "apiDeletionSynchronizesEmptyState": true,
+    "refreshKeepsEmptyList": true,
+    "activityCountTested": 50,
+    "studentViewports": [
+      [1024, 768],
+      [1366, 768]
+    ],
+    "studentAspectRatio": "16:9",
+    "documentOverflow": false,
+    "scriptErrors": 0
+  },
+  "demoUpgrade": {
+    "preUpgradeBackup": true,
+    "allOriginalColumnsUnchangedBeforeDemoActions": true,
+    "participants": 18,
+    "responses": 54,
+    "activityIdsBackfilled": 54,
+    "originalClassroomIdPreserved": true
+  },
+  "sourceSha256": {
+    "server/app.js": "1c2af3ef981ce7f1ff6a80c6b38cb5c7fd1e3fd2aea104fd277ced472da9d3b8",
+    "server/store.js": "ba68138547efbcc0982a6f770308e88a8d266d229b741a83610ea3e983bf6f64",
+    "server/database.js": "af1dadff133b21f4d1c4edf57a3ded5f65cc53612856b16ae6eb2e6d7892c20c",
+    "shared/activities.js": "8a3d3b1ae1e2e25f5fec9afc502830716bf485355977c873ec3bbc7adb77359b",
+    "src/App.jsx": "14f4cdd129639a66720c1d0bd49ceebd2649bbf07163452c83f8d549436196f7",
+    "src/Presentation.jsx": "f5312c82e51c8582071a937e54450f692e9fe7773f78af12bfbd86a409dae9eb",
+    "src/presentation.css": "faabf4bcd5af315af43f3c974f00ac6baa3fabc37c259e67e52afdd64c964863",
+    "scripts/migrate-postgres.js": "26259be51d890ffd02c6bccd309c17978a8660f52277c1539de4ba7e1357a034"
+  }
+}

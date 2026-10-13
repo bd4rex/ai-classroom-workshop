@@ -109,7 +109,7 @@ test(
 );
 
 test(
-  "SQLite 迁移到 PostgreSQL 保留课堂链接、密码、提交和删除回执，拒绝覆盖已有数据",
+  "SQLite 迁移到 PostgreSQL 保留课堂链接、密码、重复类型活动及删除回执，拒绝覆盖已有数据",
   { skip: !databaseUrl },
   async (t) => {
     const dataDir = mkdtempSync(join(tmpdir(), "class-migrate-"));
@@ -134,14 +134,32 @@ test(
       Date.now() + 86400000,
     );
     await source.store.run(
-      "INSERT INTO submissions (room_id,participant_id,kind,content,created_at,deleted_at) VALUES (?,?,?,?,?,?)",
+      "INSERT INTO submissions (room_id,participant_id,kind,content,created_at,deleted_at,activity_id) VALUES (?,?,?,?,?,?,?)",
       room.id,
       "migration-student",
       "discover",
       "{}",
       Date.now(),
       Date.now(),
+      "discover",
     );
+    const activityList = await source.store.activities();
+    activityList.push({
+      ...structuredClone(activityList[0]),
+      id: "migration-judge",
+      question: "同类型迁移题目",
+    });
+    await source.store.setMeta(`activities:${room.id}`, activityList);
+    for (const id of ["judge", "migration-judge"])
+      await source.store.run(
+        "INSERT INTO submissions (room_id,participant_id,kind,content,created_at,activity_id) VALUES (?,?,?,?,?,?)",
+        room.id,
+        "migration-student",
+        "judge",
+        JSON.stringify({ answer: "true" }),
+        Date.now(),
+        id,
+      );
     await source.close();
     const pool = new pg.Pool({ connectionString: databaseUrl });
     t.after(async () => {
@@ -193,15 +211,18 @@ test(
         joined: 1,
         discover: 0,
         design: 0,
-        judge: 0,
+        judge: 1,
+        "migration-judge": 1,
         choice: 0,
         wordcloud: 0,
       });
+      assert.deepEqual(await dest.store.activities(), activityList);
       const deleted = await dest.store.get(
-        "SELECT content,deleted_at FROM submissions",
+        "SELECT content,deleted_at,activity_id FROM submissions WHERE kind='discover'",
       );
       assert.equal(deleted.content, "{}");
       assert.ok(deleted.deleted_at);
+      assert.equal(deleted.activity_id, "discover");
     } finally {
       await dest.close();
     }
@@ -344,5 +365,159 @@ test(
       1,
     );
     assert.equal((await a.store.room()).id, room.id);
+  },
+);
+
+test(
+  "0.6 PostgreSQL 双实例升级保留答案，活动排序与删除提交的并发不产生串题或残留",
+  { skip: !databaseUrl },
+  async (t) => {
+    const schema = `test_${randomUUID().replaceAll("-", "")}`;
+    const options = {
+      databaseUrl,
+      databaseSchema: schema,
+      initialPassword: password,
+      serveStatic: false,
+    };
+    const initial = await buildApp(options),
+      apps = [initial];
+    const pool = new pg.Pool({ connectionString: databaseUrl });
+    t.after(async () => {
+      await Promise.all(apps.map((app) => app.close()));
+      await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+      await pool.end();
+    });
+    const room = await initial.store.room();
+    const teacher = cookie(
+      await req(initial, "POST", "/api/login", { password }),
+    );
+    const joined = await req(initial, "POST", "/api/join", {
+      classroomId: room.id,
+    });
+    const student = cookie(joined),
+      school = joined.json().state.schools[0];
+    const send = async (app, url, body) => {
+      const current = await app.store.room();
+      return req(
+        app,
+        "POST",
+        url,
+        { roomId: current.id, revision: current.revision, ...body },
+        teacher,
+      );
+    };
+    await send(initial, "/api/teacher/control", { action: "page", open: true });
+    await send(initial, "/api/teacher/control", {
+      action: "stage",
+      stage: "judge",
+    });
+    assert.equal(
+      (
+        await req(
+          initial,
+          "POST",
+          "/api/student/submit/judge",
+          { name: "并发迁移同学", school, answer: "true", activityRevision: 1 },
+          student,
+        )
+      ).statusCode,
+      200,
+    );
+    await initial.store.setMeta(
+      `activities:${room.id}`,
+      await initial.store.activitySettings(),
+    );
+    await initial.close();
+    await pool.query(`ALTER TABLE "${schema}".submissions DROP COLUMN activity_id;
+    ALTER TABLE "${schema}".submissions ADD CONSTRAINT submissions_participant_id_kind_key UNIQUE(participant_id,kind);`);
+    const [a, b] = await Promise.all([buildApp(options), buildApp(options)]);
+    apps.push(a, b);
+    assert.equal(
+      (
+        await req(b, "GET", "/api/results?kind=judge", undefined, student)
+      ).json().total,
+      1,
+    );
+    const added = await send(a, "/api/teacher/activities", {
+      action: "add",
+      kind: "judge",
+    });
+    assert.equal(added.statusCode, 200, added.body);
+    const id = added.json().createdActivityId,
+      current = added.json().room;
+    const order = added.json().activities.map((x) => x.id);
+    const reordered = await Promise.all(
+      [a, b].map((app) =>
+        req(
+          app,
+          "POST",
+          "/api/teacher/activities",
+          {
+            roomId: current.id,
+            revision: current.revision,
+            action: "reorder",
+            order: [...order].reverse(),
+          },
+          teacher,
+        ),
+      ),
+    );
+    assert.deepEqual(reordered.map((x) => x.statusCode).sort(), [200, 409]);
+    assert.deepEqual(
+      (await b.store.activities()).map((x) => x.id),
+      [...order].reverse(),
+    );
+    await send(a, "/api/teacher/control", { action: "stage", stage: id });
+    assert.equal(
+      (await req(b, "GET", `/api/results?kind=${id}`, undefined, student))
+        .statusCode,
+      403,
+    );
+    const race = await Promise.all([
+      req(
+        b,
+        "POST",
+        `/api/student/submit/${id}`,
+        { answer: "false", activityRevision: 1 },
+        student,
+      ),
+      send(a, "/api/teacher/activities", {
+        action: "delete",
+        id,
+        confirm: true,
+      }),
+    ]);
+    assert.ok([200, 404].includes(race[0].statusCode), race[0].body);
+    assert.equal(race[1].statusCode, 200, race[1].body);
+    assert.equal(
+      (
+        await b.store.get(
+          "SELECT COUNT(*) n FROM submissions WHERE activity_id=?",
+          id,
+        )
+      ).n,
+      0,
+    );
+    assert.equal((await b.store.room()).stage, "waiting");
+    assert.equal(
+      (
+        await req(
+          b,
+          "GET",
+          `/api/results?kind=${id}&role=teacher`,
+          undefined,
+          teacher,
+        )
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await b.store.get(
+          "SELECT COUNT(*) n FROM submissions WHERE activity_id='judge'",
+        )
+      ).n,
+      1,
+    );
   },
 );

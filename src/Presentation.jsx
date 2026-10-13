@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Pencil,
+  Trash2,
+  Play,
+  X,
   Check,
   CheckCheck,
   CircleHelp,
@@ -17,6 +24,8 @@ import { api } from "./api.js";
 import { createRefreshQueue } from "./refresh-queue.js";
 import {
   presentationKinds,
+  classroomActivities,
+  maxActivities,
   activityNames,
   splitWords,
 } from "../shared/activities.js";
@@ -212,13 +221,13 @@ function WordCloud({ data }) {
 export function ActivityResults(props) {
   return (
     <ResultsPanel
-      key={`${props.state.room.id}:${props.kind}:${props.role}`}
+      key={`${props.state.room.id}:${props.activityId || props.kind}:${props.role}`}
       {...props}
     />
   );
 }
 
-function ResultsPanel({ state, kind, role = "student" }) {
+function ResultsPanel({ state, kind, activityId = kind, role = "student" }) {
   const [data, setData] = useState(null),
     [error, setError] = useState("");
   const refresh = useRef();
@@ -228,7 +237,7 @@ function ResultsPanel({ state, kind, role = "student" }) {
     const queue = createRefreshQueue(async () => {
       try {
         const result = await api(
-          `/api/results?${new URLSearchParams({ kind, role, classroomId: state.room.id })}`,
+          `/api/results?${new URLSearchParams({ kind: activityId, role, classroomId: state.room.id })}`,
         );
         if (active) {
           setData(result);
@@ -244,7 +253,7 @@ function ResultsPanel({ state, kind, role = "student" }) {
       active = false;
       queue.stop();
     };
-  }, [kind, role, state.room.id]);
+  }, [activityId, role, state.room.id]);
   useEffect(() => {
     refresh.current?.();
   }, [state.room.dataRevision, state.room.revision]);
@@ -315,10 +324,11 @@ function LockedResults({ kind }) {
   );
 }
 
-function AnswerPanel({ state, kind, refresh }) {
-  const settings = state.activitySettings[kind],
-    submitted = state.submissions[kind];
-  const draftKey = `slide-draft:${state.room.id}:${state.me.id}:${kind}:${settings.revision}`;
+function AnswerPanel({ state, activity, index, total, refresh }) {
+  const { id: activityId, kind } = activity;
+  const settings = activity,
+    submitted = state.submissions[activityId];
+  const draftKey = `slide-draft:${state.room.id}:${state.me.id}:${activityId}:${settings.revision}`;
   const [draft, setDraft] = useState(() => {
     try {
       return (
@@ -356,13 +366,16 @@ function AnswerPanel({ state, kind, refresh }) {
     setBusy(true);
     setError("");
     try {
-      await api(`/api/student/submit/${kind}?classroomId=${state.room.id}`, {
-        ...(!state.me.name ? { name: draft.name, school: draft.school } : {}),
-        activityRevision: settings.revision,
-        ...(kind === "wordcloud"
-          ? { words: draft.words }
-          : { answer: draft.answer }),
-      });
+      await api(
+        `/api/student/submit/${activityId}?classroomId=${state.room.id}`,
+        {
+          ...(!state.me.name ? { name: draft.name, school: draft.school } : {}),
+          activityRevision: settings.revision,
+          ...(kind === "wordcloud"
+            ? { words: draft.words }
+            : { answer: draft.answer }),
+        },
+      );
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -379,7 +392,8 @@ function AnswerPanel({ state, kind, refresh }) {
           {kind === "choice" ? " · 单选" : ""}
         </span>
         <span>
-          {String(presentationKinds.indexOf(kind) + 1).padStart(2, "0")} / 03
+          {String(index + 1).padStart(2, "0")} /{" "}
+          {String(total).padStart(2, "0")}
         </span>
       </div>
       <h1
@@ -567,8 +581,11 @@ export function StudentPresentation({
     }
   };
   const room = state?.room;
-  const active = room?.pageOpen && presentationKinds.includes(room.stage);
-  const kind = active ? room.stage : null;
+  const list = state ? classroomActivities(state) : [];
+  const index = list.findIndex((item) => item.id === room?.stage);
+  const activity = list[index];
+  const active = room?.pageOpen && !!activity;
+  const kind = active ? activity.kind : null;
   const stopped = ended || room?.stage === "ended";
   return (
     <SlideFrame>
@@ -579,19 +596,26 @@ export function StudentPresentation({
           </span>
           AI 共创课堂<small>一起思考 · 看见不同</small>
         </a>
-        <ol className="slide-progress" aria-label="课堂活动进度">
-          {presentationKinds.map((key, index) => (
-            <li
-              key={key}
-              className={kind === key ? "active" : ""}
-              aria-current={kind === key ? "step" : undefined}
-            >
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              {activityNames[key]}
-              {state?.submissions[key] && <Check size={14} />}
-            </li>
-          ))}
-        </ol>
+        <div
+          className="slide-progress"
+          aria-label="课堂活动进度"
+          aria-live="polite"
+        >
+          {active ? (
+            <span className="current-progress">
+              活动 <strong>{String(index + 1).padStart(2, "0")}</strong>
+              <span>/ {String(list.length).padStart(2, "0")}</span>
+              <b>{activityNames[kind]}</b>
+              {state.submissions[activity.id] && <Check size={16} />}
+            </span>
+          ) : (
+            <span>
+              {list.length
+                ? `本节课共 ${list.length} 个活动`
+                : "等待老师安排活动"}
+            </span>
+          )}
+        </div>
         <button
           className="fullscreen-button"
           onClick={toggleFullscreen}
@@ -604,11 +628,21 @@ export function StudentPresentation({
       {active ? (
         <div
           className="slide-columns"
-          key={`${room.id}:${state.me.id}:${kind}:${state.activitySettings[kind].revision}`}
+          key={`${room.id}:${state.me.id}:${activity.id}:${activity.revision}`}
         >
-          <AnswerPanel state={state} kind={kind} refresh={refresh} />
-          {state.submissions[kind] ? (
-            <ActivityResults state={state} kind={kind} />
+          <AnswerPanel
+            state={state}
+            activity={activity}
+            index={index}
+            total={list.length}
+            refresh={refresh}
+          />
+          {state.submissions[activity.id] ? (
+            <ActivityResults
+              state={state}
+              kind={kind}
+              activityId={activity.id}
+            />
           ) : (
             <LockedResults kind={kind} />
           )}
@@ -676,62 +710,288 @@ export function StudentPresentation({
   );
 }
 
-export function ActivityEditor({ state, refresh }) {
-  const [kind, setKind] = useState("judge");
+export function ActivityEditor({ state, refresh, controlBusy, onStart }) {
+  const list = classroomActivities(state);
+  const [editing, setEditing] = useState(null),
+    [deleting, setDeleting] = useState(null);
+  const [busy, setBusy] = useState(false),
+    [message, setMessage] = useState("");
+  const editDialog = useRef(),
+    deleteDialog = useRef();
+  const selected = list.find((item) => item.id === editing);
+  const pending = list.find((item) => item.id === deleting);
+  const ended = state.room.stage === "ended";
+  const blocked = busy || controlBusy || ended;
+  useEffect(() => {
+    if (selected) editDialog.current?.showModal();
+    else {
+      editDialog.current?.close();
+      setEditing(null);
+    }
+  }, [selected?.id]);
+  useEffect(() => {
+    if (pending) deleteDialog.current?.showModal();
+    else {
+      deleteDialog.current?.close();
+      setDeleting(null);
+    }
+  }, [pending?.id]);
+  const change = async (body) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await api("/api/teacher/activities", {
+        roomId: state.room.id,
+        revision: state.room.revision,
+        ...body,
+      });
+      await refresh();
+      if (result.createdActivityId) setEditing(result.createdActivityId);
+      if (body.action === "delete") {
+        setDeleting(null);
+        setMessage("活动及其提交已删除。");
+      }
+    } catch (error) {
+      setMessage(error.message);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const move = (index, offset) => {
+    const order = list.map((item) => item.id);
+    [order[index], order[index + offset]] = [
+      order[index + offset],
+      order[index],
+    ];
+    change({ action: "reorder", order });
+  };
   return (
-    <section className="activity-editor">
+    <div className="activity-manager">
       <div className="editor-heading">
         <div>
-          <h2>活动内容</h2>
+          <h2>
+            本节课的活动{" "}
+            <small>
+              {list.length} / {maxActivities}
+            </small>
+          </h2>
           <p>
-            修改题干和选项后保存。收到第一份提交后，本题锁定，保证全班统计一致。
+            按教学顺序安排活动，同一种类型可以多次添加。开始活动后，全班自动跟随。
           </p>
         </div>
-        <div className="tabs">
-          {presentationKinds.map((key) => (
+        <div className="activity-add" aria-label="添加课堂活动">
+          {presentationKinds.map((kind) => (
             <button
-              key={key}
-              className={key === kind ? "active" : ""}
-              onClick={() => setKind(key)}
+              key={kind}
+              className="secondary"
+              disabled={blocked || list.length >= maxActivities}
+              onClick={() => change({ action: "add", kind })}
             >
-              {activityNames[key]}
+              <Plus size={16} />
+              添加{activityNames[kind]}
             </button>
           ))}
         </div>
       </div>
-      <EditorForm
-        key={`${state.room.id}:${kind}:${state.activitySettings[kind].revision}`}
-        kind={kind}
-        state={state}
-        refresh={refresh}
-      />
-    </section>
+      <ol className="activity-list" aria-label="本节课的活动列表">
+        {list.map((item, index) => {
+          const current = state.room.stage === item.id,
+            Icon = icons[item.kind];
+          return (
+            <li
+              key={item.id}
+              className={current ? "current" : ""}
+              aria-label={`活动 ${index + 1}：${item.question}`}
+            >
+              <span className="activity-number">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <div className="activity-summary">
+                <div>
+                  <span className="activity-type">
+                    <Icon size={15} />
+                    {activityNames[item.kind]}
+                  </span>
+                  <span>{state.counts[item.id] || 0} 份提交</span>
+                  {current && <b>当前活动</b>}
+                </div>
+                <strong>{item.question}</strong>
+              </div>
+              <div className="activity-row-actions">
+                <button
+                  className={current ? "secondary" : "primary"}
+                  disabled={blocked || current}
+                  aria-label={`开始活动 ${index + 1}`}
+                  onClick={() => onStart(item.id)}
+                >
+                  <Play size={15} />
+                  {current ? "正在进行" : "开始活动"}
+                </button>
+                <button
+                  className="secondary"
+                  disabled={busy || controlBusy}
+                  aria-label={`编辑活动 ${index + 1}`}
+                  onClick={() => {
+                    setMessage("");
+                    setEditing(item.id);
+                  }}
+                >
+                  <Pencil size={15} />
+                  编辑
+                </button>
+                <button
+                  className="activity-icon-button"
+                  title="上移"
+                  aria-label={`上移活动 ${index + 1}`}
+                  disabled={blocked || index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp size={18} />
+                </button>
+                <button
+                  className="activity-icon-button"
+                  title="下移"
+                  aria-label={`下移活动 ${index + 1}`}
+                  disabled={blocked || index === list.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown size={18} />
+                </button>
+                <button
+                  className="activity-icon-button delete-action"
+                  title="删除活动"
+                  aria-label={`删除活动 ${index + 1}`}
+                  disabled={blocked}
+                  onClick={() => {
+                    setMessage("");
+                    setDeleting(item.id);
+                  }}
+                >
+                  <Trash2 size={17} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {!list.length && (
+        <p className="activities-empty">
+          还没有活动，从上方添加一个判断题、选择题或词云开始。学生会留在等候页。
+        </p>
+      )}
+      <p className="editor-message" role="status">
+        {message ||
+          (ended
+            ? "本节课已结束。开始新课堂后，可继续调整活动。"
+            : "已有提交的活动可移动或删除；题干和选项会锁定，避免统计混淆。")}
+      </p>
+      <dialog
+        ref={editDialog}
+        className="activity-edit-dialog activity-editor"
+        aria-labelledby="edit-activity-title"
+        onCancel={() => setEditing(null)}
+        onClose={() => setEditing(null)}
+      >
+        {selected && (
+          <>
+            <div className="editor-heading">
+              <h2 id="edit-activity-title">
+                编辑{activityNames[selected.kind]}
+              </h2>
+              <button
+                className="activity-icon-button"
+                aria-label="关闭活动编辑"
+                onClick={() => setEditing(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <EditorForm
+              key={`${state.room.id}:${selected.id}:${selected.revision}`}
+              state={state}
+              activity={selected}
+              refresh={refresh}
+              onSaved={() => {
+                setEditing(null);
+                setMessage("活动内容已保存。");
+              }}
+            />
+          </>
+        )}
+      </dialog>
+      <dialog
+        ref={deleteDialog}
+        className="delete-dialog"
+        aria-labelledby="delete-activity-title"
+        onCancel={(event) => {
+          if (busy) event.preventDefault();
+          else setDeleting(null);
+        }}
+        onClose={() => setDeleting(null)}
+      >
+        {pending && (
+          <>
+            <h2 id="delete-activity-title">删除这个活动？</h2>
+            <p className="delete-activity-question">{pending.question}</p>
+            <p>
+              该活动及其全部提交将永久删除，不再出现在学生页面、统计和导出中。此操作不可撤销。
+            </p>
+            {state.room.stage === pending.id && (
+              <p>这是当前活动。删除后，全班回到等候页，等待你开始其他活动。</p>
+            )}
+            {message && <p role="alert">{message}</p>}
+            <div className="dialog-actions">
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => setDeleting(null)}
+              >
+                取消
+              </button>
+              <button
+                className="primary danger-button"
+                disabled={busy}
+                onClick={() =>
+                  change({ action: "delete", id: pending.id, confirm: true })
+                }
+              >
+                {busy ? "正在删除…" : "确认删除活动及提交"}
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
+    </div>
   );
 }
 
-function EditorForm({ state, kind, refresh }) {
-  const settings = state.activitySettings[kind];
+function EditorForm({ state, activity, refresh, onSaved }) {
+  const { id, kind } = activity,
+    settings = activity;
   const [question, setQuestion] = useState(settings.question),
     [options, setOptions] = useState(
       settings.options.map((option) => option.label),
     );
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
-  const locked = !!state.activityLocks[kind] || state.room.stage === "ended";
+  const locked = !!state.activityLocks[id] || state.room.stage === "ended";
   const save = async (event) => {
     event.preventDefault();
     setBusy(true);
     setMessage("");
     try {
-      await api(`/api/teacher/activities/${kind}`, {
+      await api(`/api/teacher/activities/${id}`, {
         roomId: state.room.id,
         revision: state.room.revision,
         question,
         options,
       });
       await refresh();
+      onSaved();
     } catch (error) {
       setMessage(error.message);
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -809,7 +1069,7 @@ function EditorForm({ state, kind, refresh }) {
       <p className="editor-message" role="status">
         {message ||
           (locked
-            ? "此题已锁定。需要更换题目时，请先导出记录，再开始新课堂。"
+            ? "此题已锁定。需要换题时，可以另添一个同类型活动。"
             : `当前题目版本 ${settings.revision} · 保存后自动同步到学生端`)}
       </p>
     </form>
