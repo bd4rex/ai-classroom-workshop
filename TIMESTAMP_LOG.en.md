@@ -2,6 +2,11 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 14:20 · Deployment repair and acceptance records merged into main
+
+- [PR #4](https://github.com/bd4rex/ai-classroom-workshop/pull/4) merged as `402d0bcc7f1463c8b472ad27fd9dbf9b8cffc54e`. GitHub's MERGED state and remote main were read back, and local main was fast-forwarded. This entry is a follow-up handoff commit.
+- Main includes pre-migration SQL, an isolated reproduction, paired procedures, and evidence from both actual releases. The merge delivers already-validated deployment tools and records. Both production sites completed acceptance by 14:13; this log update does not require another release.
+
 ## 2026-10-13 14:13 · Both Coze projects repaired and accepted in production
 
 - The user explicitly waived backup. Ran the tested transactional `activity_id` pre-migration separately in both production databases without clearing responses. Independent aggregates confirmed one populated record / zero visible in project 2 and 16 populated / 14 visible in the original. Rooms were waiting or ended, followed immediately by release; not every container was separately stopped.
