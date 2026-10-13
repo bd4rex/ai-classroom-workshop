@@ -1,6 +1,6 @@
 {
   "name": "ai-classroom-workshop",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -29,5 +29,5 @@
     "@vitejs/plugin-react": "^5.0.3",
     "vite": "^7.1.7"
   },
-  "description": "AI 共创课堂：一起发现，一起设计"
+  "description": "AI 共创课堂：判断、选择与词云"
 }

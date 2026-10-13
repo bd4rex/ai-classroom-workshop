@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
+  CheckCheck,
+  PieChart,
+  Cloud,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -24,8 +27,32 @@ import {
 import { api } from "./api.js";
 import { createRefreshQueue } from "./refresh-queue.js";
 import { watchClassroomEvents } from "./live-connection.js";
+import { presentationKinds } from "../shared/activities.js";
+import {
+  StudentPresentation,
+  ActivityEditor,
+  ActivityResults,
+} from "./Presentation.jsx";
 
 const activities = {
+  judge: {
+    number: "01",
+    title: "判断题",
+    subtitle: "正确或错误 · 饼图",
+    icon: CircleCheck,
+  },
+  choice: {
+    number: "02",
+    title: "选择题",
+    subtitle: "单项选择 · 饼图",
+    icon: Check,
+  },
+  wordcloud: {
+    number: "03",
+    title: "词云",
+    subtitle: "输入关键词 · 汇聚词云",
+    icon: Sparkles,
+  },
   discover: {
     number: "01",
     title: "一起发现",
@@ -41,6 +68,13 @@ const activities = {
     caption: "从一个真实的需要出发，为未来设计一种可能。",
   },
 };
+const visibleActivities = (state) =>
+  Object.entries(activities).filter(
+    ([kind]) =>
+      presentationKinds.includes(kind) ||
+      state.room.stage === kind ||
+      state.counts[kind] > 0,
+  );
 const emptyDiscovery = {
   name: "",
   school: "",
@@ -251,19 +285,24 @@ function TeacherEntry({ refresh }) {
           都是未来的起点<span>。</span>
         </h1>
         <p>
-          看看人工智能如何走进生活，
+          从一个判断，到一个选择，
           <br />
-          再用你的想象，设计下一个好点子。
+          再让大家的关键词汇成一片灵感。
         </p>
         <div className="entry-steps">
           <span>
-            <Search size={19} />
-            一起发现
+            <CheckCheck size={19} />
+            判断
           </span>
           <ArrowRight size={18} />
           <span>
-            <Lightbulb size={19} />
-            一起设计
+            <PieChart size={19} />
+            选择
+          </span>
+          <ArrowRight size={18} />
+          <span>
+            <Cloud size={19} />
+            词云
           </span>
         </div>
         <div className="orbit-art" aria-hidden="true">
@@ -645,7 +684,7 @@ function TeacherControls({ state, refresh }) {
           <strong>课前等候</strong>
           <span>学生加入后等待老师开始</span>
         </button>
-        {Object.entries(activities).map(([kind, a]) => (
+        {visibleActivities(state).map(([kind, a]) => (
           <button
             key={kind}
             className={`stage-choice ${kind} ${room.stage === kind ? "selected" : ""}`}
@@ -792,16 +831,18 @@ function StudentClassroom({ state, refresh }) {
           <h1>{activities[kind].subtitle}</h1>
         </div>
         <ol className="student-progress" aria-label="课堂主题进度">
-          {Object.entries(activities).map(([key, a]) => (
-            <li
-              key={key}
-              aria-current={kind === key ? "step" : undefined}
-              className={kind === key ? "current" : ""}
-            >
-              <span>{a.number}</span>
-              {a.title}
-            </li>
-          ))}
+          {Object.entries(activities)
+            .filter(([key]) => !presentationKinds.includes(key))
+            .map(([key, a]) => (
+              <li
+                key={key}
+                aria-current={kind === key ? "step" : undefined}
+                className={kind === key ? "current" : ""}
+              >
+                <span>{a.number}</span>
+                {a.title}
+              </li>
+            ))}
         </ol>
       </div>
       <p className="sync-notice" role="status">
@@ -931,7 +972,7 @@ function Share({ room }) {
 function Board({ state, role, fixedKind, refreshClassroom }) {
   const student = role === "student";
   const [selected, setSelected] = useState(
-    activities[state.room.stage] ? state.room.stage : "discover",
+    activities[state.room.stage] ? state.room.stage : "judge",
   );
   const kind = fixedKind || selected;
   const [query, setQuery] = useState(""),
@@ -1068,7 +1109,7 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
       <div className="board-toolbar">
         {!student && (
           <div className="tabs" role="tablist" aria-label="查看哪个主题的提交">
-            {Object.entries(activities).map(([key, a]) => (
+            {visibleActivities(state).map(([key, a]) => (
               <button
                 key={key}
                 id={`tab-${key}`}
@@ -1100,6 +1141,12 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
           />
         </label>
       </div>
+      {!student && presentationKinds.includes(kind) && (
+        <details className="teacher-results">
+          <summary>查看{activities[kind].title}的全班结果</summary>
+          <ActivityResults state={state} kind={kind} role="teacher" />
+        </details>
+      )}
       {!student && (
         <div className="moderation-toolbar">
           <label>
@@ -1154,7 +1201,7 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
         >
           <h3 id="delete-confirm-title">确认删除提交</h3>
           <p>
-            即将删除“一起{kind === "discover" ? "发现" : "设计"}”中的{" "}
+            即将删除“{activities[kind].title}”中的{" "}
             {pendingDelete?.ids.length || 0} 份提交：
           </p>
           <p className="delete-names">{pendingDelete?.names.join("、")}</p>
@@ -1264,8 +1311,14 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
                   {kind === "discover" && (
                     <th className="field-column">领域</th>
                   )}
-                  <th>{kind === "discover" ? "应用场景" : "场景"}</th>
-                  <th>{kind === "discover" ? "价值" : "基本功能"}</th>
+                  {presentationKinds.includes(kind) ? (
+                    <th>提交内容</th>
+                  ) : (
+                    <>
+                      <th>{kind === "discover" ? "应用场景" : "场景"}</th>
+                      <th>{kind === "discover" ? "价值" : "基本功能"}</th>
+                    </>
+                  )}
                   <th className="action-column">操作</th>
                 </tr>
               </thead>
@@ -1300,8 +1353,22 @@ function Board({ state, role, fixedKind, refreshClassroom }) {
                         <span className="field-chip">{row.field}</span>
                       </td>
                     )}
-                    <td>{row.scenario}</td>
-                    <td>{kind === "discover" ? row.value : row.function}</td>
+                    {presentationKinds.includes(kind) ? (
+                      <td>
+                        {kind === "wordcloud"
+                          ? row.words?.join("、")
+                          : state.activitySettings[kind].options.find(
+                              (option) => option.id === row.answer,
+                            )?.label}
+                      </td>
+                    ) : (
+                      <>
+                        <td>{row.scenario}</td>
+                        <td>
+                          {kind === "discover" ? row.value : row.function}
+                        </td>
+                      </>
+                    )}
                     <td className="action-column">
                       <button
                         className="delete-action"
@@ -1444,6 +1511,20 @@ export default function App() {
       setLogoutError(e.message);
     }
   };
+  if (
+    !teacher &&
+    (!state || !["discover", "design"].includes(state.room.stage))
+  )
+    return (
+      <StudentPresentation
+        state={state}
+        loading={loading}
+        error={error}
+        ended={ended}
+        connection={connection}
+        refresh={refresh}
+      />
+    );
   return (
     <>
       <Header
@@ -1490,17 +1571,17 @@ export default function App() {
                       <Users size={16} />
                       <strong>{state.counts.joined}</strong> 人已加入
                     </span>
-                    <span>
-                      <strong>{state.counts.discover}</strong> 次发现
-                    </span>
-                    <span>
-                      <strong>{state.counts.design}</strong> 个设计
-                    </span>
+                    {visibleActivities(state).map(([kind, activity]) => (
+                      <span key={kind}>
+                        <strong>{state.counts[kind]}</strong> 份{activity.title}
+                      </span>
+                    ))}
                   </div>
                 </div>
                 <Share room={state.room} />
               </section>
               <TeacherControls state={state} refresh={refresh} />
+              <ActivityEditor state={state} refresh={refresh} />
               <Board
                 key={state.room.id}
                 state={state}

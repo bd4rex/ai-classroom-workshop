@@ -9,11 +9,13 @@
 3. Back up the platform's `.coze`, then adapt the [credential-free template](coze.toml.example). Restrict development `--watch-path` to avoid Vite restart loops. Production must require shared storage.
 4. Keep `DATABASE_SCHEMA=public` so platform schema synchronization can discover tables. Migrate existing data before starting the application. Empty storage creates a new classroom. Configure an initial password through the platform environment, outside Git; it never overwrites a stored password.
 5. Run `pnpm install` and `pnpm run check`. Default checks skip PostgreSQL-specific tests; use the safe test invocation below to validate shared storage.
-6. Development health must report version `0.5.0`, `storage: postgres`, and `syncMode: polling`. Open `/teacher` in a standalone tab, sign in, copy the student link, and exercise both topics in another browser context.
+6. Development health must report version `0.6.0`, `storage: postgres`, and `syncMode: polling`. Open `/teacher` in a standalone tab, sign in, copy the student link, and exercise all three activities in another browser context.
 7. Select the production database when publishing. Do not copy development student exercises into a new production database or overwrite existing production data. These are separate databases.
 8. Validate the actual production domain after publishing. A deployment-success indicator does not replace health, session, and stable-link checks. Record commit, time, environment, outcomes, and remaining work.
 
 ## Existing-project upgrade order
+
+For a 0.5 → 0.6 upgrade on the same database, back up and stop writes, then start the new code; submission constraints migrate automatically, preserving IDs, sessions, and removal receipts. Do not run the SQLite-to-PostgreSQL importer again against an existing PostgreSQL database. The student view becomes a 16:9 browser presentation for the new activities; the teacher workspace remains scrollable. See [0.6 migration and validation](DEBUGGING_2026-10-13.en.md). The import procedure below applies when changing storage backends.
 
 Proceed in order: **identify production source → stop writes and back up → inspect → import into empty target → compare original fields → update code/configuration → start → validate**. Do not initialize a fresh classroom before importing the old one.
 
@@ -49,7 +51,7 @@ Run shared-storage tests against development or a dedicated test database, never
 node --input-type=module -e 'import {spawnSync} from "node:child_process";let connection=process.env.DATABASE_URL||process.env.PGDATABASE_URL;if(!connection){if(!process.env.PGHOST||!process.env.PGDATABASE)throw new Error("Missing PG environment");const u=new URL("postgresql://localhost");u.hostname=process.env.PGHOST;u.port=process.env.PGPORT||"5432";u.username=process.env.PGUSER||"";u.password=process.env.PGPASSWORD||"";u.pathname="/"+process.env.PGDATABASE;connection=u.href;}const r=spawnSync("pnpm",["run","check"],{env:{...process.env,TEST_DATABASE_URL:connection},stdio:"inherit"});process.exitCode=r.status??1;'
 ```
 
-Expected: 40 passed, zero failures, and a successful build. Without `TEST_DATABASE_URL`, SQLite checks report 37 passed and three skipped; this does not validate shared storage. Do not print secrets with `env`, `printenv`, or `set -x`.
+Expected: 50 passed, zero failures, and a successful build. Without `TEST_DATABASE_URL`, SQLite checks report 46 passed and four skipped; this does not validate shared storage. Do not print secrets with `env`, `printenv`, or `set -x`.
 
 ## Preserve existing classrooms and responses
 
@@ -69,7 +71,7 @@ Code cannot recover responses or classroom mappings from already-lost production
 
 ## Acceptance and rollback
 
-- Verify `/api/health` on the actual production origin: `storage: postgres`, `syncMode: polling`, version `0.5.0`.
+- Verify `/api/health` on the actual production origin: `storage: postgres`, `syncMode: polling`, version `0.6.0`.
 - Teacher authentication and shared links must survive alternating requests, refreshes, and replica restarts.
 - Unsubmitted students cannot read peers; students follow the teacher on the next poll; deletion removes content from both audiences and exports.
 - 500 students polling every 3 seconds average roughly 167 state requests per second, plus joins, submission bursts, and list requests.
@@ -91,16 +93,16 @@ Passwords are not bound to domains; their hashes live in the selected database. 
 
 For an incorrect-origin message, check whether `PUBLIC_URL` includes the new domain. For immediate sign-out after successful login, check sessions, cookies, and shared storage. Neither necessarily means the password is wrong. See the [incident record](DEBUGGING_2026-09-23.en.md) for the new project's production verification on 2026-09-23.
 
-| Symptom | Investigation order |
-| --- | --- |
-| Correct password followed by sign-out | Check production health for PostgreSQL and verify all replicas share one database; then inspect cookies in a top-level tab. Do not repeatedly reset passwords |
-| Newly copied link works but old link fails | Compare classroom IDs, database sources, and classroom creation history. Find the original backup; never redirect an unknown ID to another class |
-| Scheduled classroom synchronization | Normal PostgreSQL behavior; confirm students follow teacher controls on the next poll |
-| Connection interrupted and retrying | Inspect `/api/session` status/content type, application logs, and database connectivity; HTTP 200 HTML can be a proxy error |
-| Concurrent submissions fail | Verify the `room_changes` fix is deployed; inspect sanitized error codes, pool waits, gateway limits, and resource usage, then reproduce in isolation |
-| Missing configuration after database creation | Reconnect the sandbox, open a new terminal, and check variable presence; verify the production database binding separately |
-| Preview restarts indefinitely | Replace bare `--watch` with the template's two `--watch-path` options |
-| Import refuses an existing target | Stop overwrite attempts, identify the data source, and back up. Do not bypass this protection by clearing tables |
+| Symptom                                       | Investigation order                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correct password followed by sign-out         | Check production health for PostgreSQL and verify all replicas share one database; then inspect cookies in a top-level tab. Do not repeatedly reset passwords |
+| Newly copied link works but old link fails    | Compare classroom IDs, database sources, and classroom creation history. Find the original backup; never redirect an unknown ID to another class              |
+| Scheduled classroom synchronization           | Normal PostgreSQL behavior; confirm students follow teacher controls on the next poll                                                                         |
+| Connection interrupted and retrying           | Inspect `/api/session` status/content type, application logs, and database connectivity; HTTP 200 HTML can be a proxy error                                   |
+| Concurrent submissions fail                   | Verify the `room_changes` fix is deployed; inspect sanitized error codes, pool waits, gateway limits, and resource usage, then reproduce in isolation         |
+| Missing configuration after database creation | Reconnect the sandbox, open a new terminal, and check variable presence; verify the production database binding separately                                    |
+| Preview restarts indefinitely                 | Replace bare `--watch` with the template's two `--watch-path` options                                                                                         |
+| Import refuses an existing target             | Stop overwrite attempts, identify the data source, and back up. Do not bypass this protection by clearing tables                                              |
 
 Append each release's results to the [handoff log](../TIMESTAMP_LOG.en.md) and maintain [validation evidence](../TEST_REPORT.en.md). See the [complete investigation](DEBUGGING_2026-09-23.en.md) for this incident.
 

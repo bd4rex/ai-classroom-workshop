@@ -108,12 +108,19 @@ export async function openDatabase(directory, options = {}) {
             name TEXT NOT NULL DEFAULT '', school TEXT NOT NULL DEFAULT '', expires BIGINT NOT NULL);
           CREATE TABLE IF NOT EXISTS submissions (
             id BIGSERIAL PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id),
-            participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design')),
+            participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
             content TEXT NOT NULL, created_at BIGINT NOT NULL, deleted_at BIGINT, UNIQUE(participant_id,kind));
           CREATE INDEX IF NOT EXISTS participants_room ON participants(room_id);
           CREATE INDEX IF NOT EXISTS submissions_room ON submissions(room_id,kind,id);
           CREATE INDEX IF NOT EXISTS teachers_expires ON teachers(expires);
         `);
+        const constraint = await db.get(
+          "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='submissions'::regclass AND conname='submissions_kind_check'",
+        );
+        if (constraint && !constraint.definition.includes("wordcloud"))
+          await db.run(
+            "ALTER TABLE submissions DROP CONSTRAINT submissions_kind_check; ALTER TABLE submissions ADD CONSTRAINT submissions_kind_check CHECK(kind IN ('discover','design','judge','choice','wordcloud'))",
+          );
       });
     } catch (error) {
       await pool.end();
@@ -138,7 +145,7 @@ export async function openDatabase(directory, options = {}) {
       name TEXT NOT NULL DEFAULT '', school TEXT NOT NULL DEFAULT '', expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL REFERENCES rooms(id),
-      participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design')),
+      participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
       content TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(participant_id,kind));
     CREATE INDEX IF NOT EXISTS participants_room ON participants(room_id);
     CREATE INDEX IF NOT EXISTS submissions_room ON submissions(room_id,kind,id);`);
@@ -175,6 +182,40 @@ export async function openDatabase(directory, options = {}) {
     db.exec(
       "ALTER TABLE rooms ADD COLUMN data_revision INTEGER NOT NULL DEFAULT 0",
     );
+  // SQLite cannot alter CHECK constraints. Rebuild atomically, preserving IDs,
+  // removal receipts and the AUTOINCREMENT high-water mark for older databases.
+  if (
+    !db
+      .prepare("SELECT sql FROM sqlite_master WHERE name='submissions'")
+      .get()
+      .sql.includes("wordcloud")
+  ) {
+    const sequence =
+      db
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name='submissions'")
+        .get()?.seq || 0;
+    try {
+      db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE submissions_next (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL REFERENCES rooms(id),
+          participant_id TEXT NOT NULL REFERENCES participants(id),
+          kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
+          content TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER,
+          UNIQUE(participant_id,kind));
+        INSERT INTO submissions_next SELECT id,room_id,participant_id,kind,content,created_at,deleted_at FROM submissions;
+        DROP TABLE submissions;
+        ALTER TABLE submissions_next RENAME TO submissions;
+        CREATE INDEX submissions_room ON submissions(room_id,kind,id);`);
+      db.prepare(
+        "UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='submissions'",
+      ).run(sequence);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      db.close();
+      throw error;
+    }
+  }
   let pending = Promise.resolve();
   const exclusive = (fn) => {
     if (context.getStore()) return Promise.resolve().then(fn);

@@ -7,6 +7,15 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { createStore, AppError, hash, str, loadSchools } from "./store.js";
 import { token, passwordHash, verifyPassword } from "./auth.js";
+import {
+  allKinds,
+  presentationKinds,
+  defaultActivities,
+  activityNames,
+  splitWords,
+  choiceResults,
+  wordResults,
+} from "../shared/activities.js";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const cookieValue = (request, name) =>
@@ -15,7 +24,7 @@ const cookieValue = (request, name) =>
     .map((s) => s.trim())
     .find((s) => s.startsWith(`${name}=`))
     ?.slice(name.length + 1);
-const kinds = ["discover", "design"];
+const kinds = allKinds;
 const csvCell = (value) => {
   let text = String(value ?? "");
   if (/^[\s\uFEFF]*[=+@-]/u.test(text)) text = `'${text}`;
@@ -100,6 +109,7 @@ export async function buildApp({
       "/api/teacher/control",
       "/api/teacher/new-room",
       "/api/teacher/submissions/moderate",
+      "/api/teacher/activities/:kind",
     ].includes(route.url);
     const shared = [
       "/api/join",
@@ -109,6 +119,7 @@ export async function buildApp({
     ].includes(route.url);
     const snapshot = [
       "/api/board",
+      "/api/results",
       "/api/teacher/state",
       "/api/teacher/share",
       "/api/teacher/export",
@@ -218,12 +229,21 @@ export async function buildApp({
       counts: await store.counts(),
       schools,
       sync,
+      activitySettings: await store.activitySettings(),
       ...(person
         ? {
             me: { id: person.id, name: person.name, school: person.school },
             submissions: await own(person),
           }
         : {
+            activityLocks: Object.fromEntries(
+              (
+                await store.all(
+                  "SELECT kind,COUNT(*) n FROM submissions WHERE room_id=? GROUP BY kind",
+                  await store.meta("current"),
+                )
+              ).map((row) => [row.kind, row.n > 0]),
+            ),
             submissionSchools: (
               await store.all(
                 "SELECT DISTINCT p.school FROM participants p JOIN submissions s ON s.participant_id=p.id WHERE s.room_id=? ORDER BY p.school",
@@ -278,7 +298,7 @@ export async function buildApp({
   app.get("/api/health", async () => ({
     ok: true,
     app: "AI 共创课堂",
-    version: "0.5.0",
+    version: "0.6.0",
     storage: store.dialect,
     syncMode,
   }));
@@ -390,6 +410,61 @@ export async function buildApp({
     broadcast();
     return await state();
   });
+  app.post("/api/teacher/activities/:kind", async (request) => {
+    await teacher(request);
+    const kind = request.params.kind,
+      body = request.body ?? {};
+    if (!presentationKinds.includes(kind))
+      throw new AppError("活动不存在", 404);
+    const room = await store.room();
+    if (body.roomId !== room.id || body.revision !== room.revision)
+      throw new AppError("课堂已变化，请刷新后编辑", 409);
+    if (room.stage === "ended")
+      throw new AppError("本节课已经结束，请开始新课堂", 409);
+    if (
+      await store.get(
+        "SELECT id FROM submissions WHERE room_id=? AND kind=? LIMIT 1",
+        room.id,
+        kind,
+      )
+    )
+      throw new AppError(
+        "本题已收到提交，题干和选项已锁定；请在新课堂修改",
+        409,
+      );
+    const question = str(body.question, "题干", 60);
+    let options = [];
+    if (kind === "judge")
+      options = structuredClone(defaultActivities.judge.options);
+    if (kind === "choice") {
+      if (
+        !Array.isArray(body.options) ||
+        body.options.length < 2 ||
+        body.options.length > 6
+      )
+        throw new AppError("选择题需要 2–6 个选项");
+      options = body.options.map((label, i) => ({
+        id: String.fromCharCode(65 + i),
+        label: str(label, "选项", 24),
+      }));
+      if (
+        new Set(
+          options.map(({ label }) => label.normalize("NFKC").toLowerCase()),
+        ).size !== options.length
+      )
+        throw new AppError("选项不能重复");
+    }
+    const settings = await store.activitySettings();
+    settings[kind] = {
+      question,
+      options,
+      revision: settings[kind].revision + 1,
+    };
+    await store.setMeta(`activities:${room.id}`, settings);
+    await store.control(room);
+    broadcast();
+    return await state();
+  });
   app.get("/api/teacher/share", async (request) => {
     await teacher(request);
     // The browser sees the public HTTPS origin even when a proxy talks HTTP
@@ -493,11 +568,34 @@ export async function buildApp({
         scenario: str(body.scenario, "应用场景", 500),
         value: str(body.value, "价值", 500),
       };
-    } else {
+    } else if (kind === "design") {
       content = {
         scenario: str(body.scenario, "场景", 500),
         function: str(body.function, "基本功能", 500),
       };
+    } else {
+      const settings = (await store.activitySettings())[kind];
+      if (body.activityRevision !== settings.revision)
+        throw new AppError("题目已更新，请按最新题目重新作答", 409);
+      if (kind === "wordcloud") {
+        if (typeof body.words !== "string" || body.words.length > 100)
+          throw new AppError("请填写 1–3 个词，每个词最多 12 个字");
+        const words = splitWords(body.words);
+        if (
+          !words.length ||
+          words.length > 3 ||
+          words.some(
+            (word) =>
+              [...word].length > 12 || /[\u0000-\u001f\u007f]/u.test(word),
+          )
+        )
+          throw new AppError("请填写 1–3 个词，每个词最多 12 个字");
+        content = { words };
+      } else {
+        if (!settings.options.some((option) => option.id === body.answer))
+          throw new AppError("请选择一个有效选项");
+        content = { answer: body.answer };
+      }
     }
     const existing = await store.get(
       "SELECT content,deleted_at FROM submissions WHERE participant_id=? AND kind=?",
@@ -596,6 +694,34 @@ export async function buildApp({
     ).map(({ content, ...row }) => ({ ...row, ...JSON.parse(content) }));
     return { rows, total, page: actualPage, pages };
   });
+  app.get("/api/results", async (request) => {
+    const actor = await audience(request),
+      kind = request.query.kind;
+    if (!presentationKinds.includes(kind))
+      throw new AppError("活动不存在", 404);
+    if (request.query.role !== "teacher") {
+      const current = await store.room();
+      if (!current.pageOpen || current.stage !== kind)
+        throw new AppError("请跟随老师查看当前活动", 403);
+      if (
+        !(await store.get(
+          "SELECT id FROM submissions WHERE participant_id=? AND kind=?",
+          actor.id,
+          kind,
+        ))
+      )
+        throw new AppError("先提交本题，再查看全班结果", 403);
+    }
+    const responses = await store.all(
+      "SELECT content,COUNT(*) n FROM submissions WHERE room_id=? AND kind=? AND deleted_at IS NULL GROUP BY content",
+      await store.meta("current"),
+      kind,
+    );
+    const settings = (await store.activitySettings())[kind];
+    return kind === "wordcloud"
+      ? wordResults(responses)
+      : choiceResults(settings.options, responses);
+  });
   app.post("/api/teacher/submissions/moderate", async (request) => {
     await teacher(request);
     const { roomId, ids, action } = request.body ?? {};
@@ -641,6 +767,7 @@ export async function buildApp({
   });
   app.get("/api/teacher/export", async (request, reply) => {
     await teacher(request);
+    const settings = await store.activitySettings();
     const rows = await store.all(
       "SELECT p.name,p.school,s.kind,s.content,s.created_at FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.room_id=? AND s.deleted_at IS NULL ORDER BY s.id",
       await store.meta("current"),
@@ -655,11 +782,12 @@ export async function buildApp({
         "价值",
         "基本功能",
         "提交时间（北京时间）",
+        "选择／填词",
       ],
       ...rows.map((row) => {
         const c = JSON.parse(row.content);
         return [
-          row.kind === "discover" ? "一起发现" : "一起设计",
+          activityNames[row.kind],
           row.school,
           row.name,
           c.field,
@@ -669,6 +797,10 @@ export async function buildApp({
           new Date(row.created_at).toLocaleString("sv-SE", {
             timeZone: "Asia/Shanghai",
           }),
+          c.words?.join("、") ||
+            settings[row.kind]?.options.find((option) => option.id === c.answer)
+              ?.label ||
+            "",
         ];
       }),
     ];

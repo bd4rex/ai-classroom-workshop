@@ -1,29 +1,31 @@
 # AI Classroom Workshop
 
-[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [Investigation](deploy/DEBUGGING_2026-09-23.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
+[中文](README.md) · [Deployment guide](deploy/coze.en.md) · [New activity checks](deploy/DEBUGGING_2026-10-13.en.md) · [Deployment investigation](deploy/DEBUGGING_2026-09-23.en.md) · [Validation](TEST_REPORT.en.md) · [Handoff log](TIMESTAMP_LOG.en.md)
 
-One teacher, one classroom, two fixed topics. The teacher controls page access and lesson progression. Students open a fixed link to enter directly and automatically follow the current topic. They write independently, then unlock that topic’s peer responses on the right after submitting.
+One teacher, one classroom, three activities: true/false, single choice, and word cloud. The teacher controls access and pacing. Students follow a fixed link and submit independently before unlocking the current activity’s pie chart or word cloud on the right.
 
-This is an independent simplification of [Tongpin Classroom Feedback](https://github.com/bd4rex/tongpin-classroom-feedback), with a separate repository and data directory. It uses React and Fastify with a fixed workflow: SQLite plus SSE for a local single process, or shared PostgreSQL plus short polling for multiple replicas. There is no general question bank, activity editor, model configuration, or AI invocation.
+This independent simplification of [Tongpin Classroom Feedback](https://github.com/bd4rex/tongpin-classroom-feedback) uses its own repository and storage. React + Fastify supports SQLite/SSE for a local single process and shared PostgreSQL/polling for multiple replicas. There are no external AI calls, general question banks, grading, or school administration.
 
 ## Classroom workflow
 
-| Activity                                     | Student input                                                                                                    | Teacher control                           |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Discover together: AI applications around us | School dropdown, name, field, application scenario, value                                                        | Switch to discovery; pause/resume writing |
-| Design together: future AI applications      | Scenario and basic functions; collect school/name on the first actual submission, otherwise reuse saved identity | Switch to design; pause/resume writing    |
+| Activity      | Student input                                       | Right panel after submission                     |
+| ------------- | --------------------------------------------------- | ------------------------------------------------ |
+| True/false    | One of correct/incorrect                            | Vote counts and proportions as a pie chart       |
+| Single choice | One of 2–6 options                                  | Per-option counts and proportions as a pie chart |
+| Word cloud    | 1–3 comma-separated terms, up to 12 characters each | Class keyword cloud                              |
 
-- The teacher can copy the student link and distribute it repeatedly. Neither teacher nor student pages display a classroom code. Students enter automatically through the link without a passcode or join button. The `/classroom/<classroom ID>` link is fixed once the classroom is created; topic changes, pause, closure, ending, reloads, and restarts do not reset it. The QR code uses the same link.
-- The master page switch controls whether students see the activity. Closing it shows a waiting screen; reopening follows the current topic. Only one of waiting, discovery, or design appears at a time.
-- Switching to design automatically moves all students to the second page, including students who have not submitted discovery. Teachers can return to a previous topic; students cannot navigate topics themselves.
-- Each topic independently requires submission before peer reading. Before submission, a lock notice appears and the server rejects list, search, and pagination requests. Submitting discovery does not unlock design responses.
-- Computer-room desktops are the primary target, with landscape tablets and classroom displays also considered. Narrow phones are not a dedicated adaptation target. The student's form or saved work appears on the left and a forum-style row list on the right shows names, schools, times, and responses. Newest responses appear first, with search and 50 items per page. Teachers can always view all records for both topics.
-- In the classroom responses table, teachers can combine topic, school, name, and content filters. Delete a single row or select rows on the current page and delete them together (up to 50 at a time). After confirmation, student pages remove the content automatically. Changing filters, topics, or pages clears the selection to avoid deleting hidden rows. The confirmation dialog lists the selected names and states that deletion cannot be undone.
-- Deletion permanently clears response content and removes it from teacher/student lists, search, response counts, and CSV exports. Only a submitted marker remains: its author sees a removal notice and cannot resubmit that topic, while retaining the existing peer-reading entitlement. Future word clouds should use active response lists or exports; this update does not implement word clouds.
-- Pausing stops writing while retaining already unlocked responses. Closing the page or ending the lesson hides student forms and peer responses. Ending shows a closing screen; teachers retain access to records and export.
-- Each participant submits once per topic; identical retries do not duplicate records, and submitted work cannot be edited. Drafts stay in the current browser tab across topic switches and reloads. Submitted records persist in the database.
-- Students follow automatically. PostgreSQL uses short polling every 2.5–3.5 seconds without persistent SSE requests. Single-process SQLite retains SSE with polling fallback around every 6–7 seconds. The header distinguishes live, periodic, and interrupted synchronization, and resumes after connectivity recovers.
-- Teacher classroom tools provide CSV export and a new-classroom action. End the lesson or close the page first; a new classroom receives a different fixed link that must be shared again. The old link continues to show the original classroom as ended and never enters the new classroom. Older records remain in the database, but the interface only views and exports the current classroom, so export before switching.
+- School and name are collected on the first actual submission and reused. Each student submits once per activity; retries are idempotent, and drafts remain in the current browser tab.
+- Teachers edit prompts and choice labels under Activity content, starting from examples. Prompts allow 60 characters; options allow 24. The first submission locks the activity configuration to prevent mixing different questions. Deleting all responses does not unlock it; a new classroom does.
+- The teacher controls page access, waiting, the three activities, pause/resume, and ending. Students cannot switch activities themselves and follow the next activity even without submitting the previous one. Pausing preserves unlocked results; closing or ending hides forms and charts.
+- **Each activity independently requires submission before results.** A true/false response does not unlock choice or word-cloud results. The server enforces identity, current activity, page access, and a submission receipt. Aggregation covers all valid classroom responses, not only the teacher table’s 50-row page.
+- Pie sectors use raw vote counts; percentages round independently to one decimal place. Equal counts have equal displayed percentages, and totals may be 99.9% or 100.1%. Answers are not graded.
+- Word frequency counts participants, deduplicating terms within each response and normalizing whitespace, full-width characters, and letter case. The server returns the top 60 terms. The fixed canvas prioritizes frequent terms and reports displayed/unique counts; teachers can inspect all valid content in the table and CSV.
+- **The student page is fixed at 16:9**, scaling a 1440 × 810 canvas uniformly to fit both window dimensions. Other aspect ratios receive centered margins, keeping questions, answers, charts, and controls on one screen. A browser-fullscreen button is included. Desktop computers, landscape tablets, and classroom displays are the targets; the teacher workspace keeps a normal scrolling laptop layout, and narrow phones are not a dedicated target.
+- Teachers can repeatedly share the fixed `/classroom/<classroom ID>` URL and matching QR code. Classroom codes are neither displayed nor required. Activity changes, pause, ending, refresh, and restart do not change a classroom’s link.
+- Teachers filter by activity, school, name, or content and delete individual responses or up to 50 selected rows. A confirmation explains permanent deletion. Cleared content is excluded from lists, pies, clouds, and CSV; only an anti-resubmission receipt remains. Its author cannot resubmit but retains access to that activity’s results.
+- PostgreSQL replicas poll every 2.5–3.5 seconds; single-process SQLite retains SSE with polling fallback. Charts refresh on data-version changes without manual reloads.
+- Classroom tools provide CSV export and new classrooms. Close or end the current class first. A new class inherits question configuration, starts with empty response statistics, and receives a new link. Existing data remains and old links show that the original class ended. The current UI exports only the current class, so export before switching.
+- Legacy Discover/Design classrooms and records remain compatible. Legacy activities with records or an active stage remain available to teachers and retain their previous form/list layout. New classrooms show only the three new activities. Upgrades preserve passwords and original links.
 
 ## Run locally
 
@@ -99,7 +101,9 @@ Version 0.4.1 has passed local real-HTTP and browser fault-simulation checks for
 
 ## Data and operating boundaries
 
-- Names, schools, and responses are **visible to current-classroom students who have submitted the same topic**, and only while that topic is the open current topic. The join page explains this. Unjoined or unsubmitted visitors cannot read peer responses; teacher actions require a password.
+- Version 0.6 extends submission-kind constraints atomically in SQLite/PostgreSQL and preserves old IDs, sessions, and removal receipts. Back up storage before upgrading; see the [upgrade record](deploy/DEBUGGING_2026-10-13.en.md).
+
+- New student activities expose the student’s own identity and class aggregates; teachers can inspect each name, school, and response. Legacy Discover/Design responses remain shared with students who submitted the same topic. Unjoined or unsubmitted students cannot read results; teacher operations require authentication.
 - Student identity uses the current browser cookie. Clearing cookies, changing browser, or changing device creates a new participant. There is no identity verification or cross-device deduplication.
 - Data defaults to `data/classroom.sqlite`, using SQLite WAL. Stop the service before backing up all of `data/`; do not copy only the live database file. Runtime data, passwords, environment files, dependencies, and screenshots are excluded from Git.
 - Previously distributed `/?code=...` links automatically redirect to their original classroom’s new fixed link. There is no code-entry screen. Changing the entry flow does not reset passwords or student work.
@@ -117,12 +121,14 @@ npm audit --omit=dev
 
 Tests use isolated temporary databases and cover combined filtering, single and bulk permanent deletion, content hiding in student APIs, authorization and classroom scope, pagination after deletion, fixed-link stability, automatic identity reuse, old-link isolation, topic synchronization, per-topic sharing gates, the master switch, pause/end controls, legacy migration, concurrent deduplication, shared sessions across replicas, real HTTP load with 500 students, SQLite-to-PostgreSQL migration, restart recovery, and real HTTP SSE. See [TEST_REPORT.en.md](TEST_REPORT.en.md) for the verified scope.
 
-| File                               | Purpose                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| `src/App.jsx`, `src/styles.css`    | Teacher progression, current-topic forms, gated sharing, split layout     |
-| `server/app.js`, `server/store.js` | Authorization, lesson state, sharing gates, SQLite migration, SSE, export |
-| `server/auth.js`                   | Asynchronous password derivation and verification                         |
-| `config/schools.json`              | School dropdown list, currently configured with six schools               |
-| `test/`                            | Automated regression tests                                                |
+| File                                           | Purpose                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/Presentation.jsx`, `src/presentation.css` | Student 16:9 canvas, charts, cloud, and question editor                   |
+| `shared/activities.js`, `src/word-layout.js`   | Configuration, aggregation, and cloud layout                              |
+| `src/App.jsx`, `src/styles.css`                | Teacher progression, current-topic forms, gated sharing, split layout     |
+| `server/app.js`, `server/store.js`             | Authorization, lesson state, sharing gates, SQLite migration, SSE, export |
+| `server/auth.js`                               | Asynchronous password derivation and verification                         |
+| `config/schools.json`                          | School dropdown list, currently configured with six schools               |
+| `test/`                                        | Automated regression tests                                                |
 
 Source baseline: `tongpin-classroom-feedback` at `f597af64b2ac199ba69dd6eb301ba5317027c64a`. This repository starts from an independent initial commit and does not copy the original runtime data or Git history.
