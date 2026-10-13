@@ -2,12 +2,22 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-13 · Three activities, pie/cloud results, and a 16:9 student view
+
+- Version 0.6.0 adds teacher-editable true/false, choice, and word-cloud prompts. Students unlock class aggregates on the right after each activity’s submission. Teacher pacing, page access, pause, stable links, and deletion remain.
+- The user limited fixed proportions to students; the teacher uses a laptop with normal scrolling. Students use a uniformly scaled 1440 × 810 canvas, centered margins, and browser fullscreen.
+- Added server result gates and full aggregation, question revisions/first-response locks, a CSV content column, and SQLite/PostgreSQL legacy constraint migrations. Existing classrooms, sessions, records, and passwords remain.
+- Checks: SQLite 46 passed/four skipped; PostgreSQL 50 passed; build passed. New 500-participant tests cover all three submission/result flows. Five desktop/tablet viewports have no document overflow; the browser flow was repaired and retested.
+- Recorded chart-transition crashes, maximum-content overflow, unequal rounding for equal votes, count-fixture failures, and legacy database constraints. See the [investigation](deploy/DEBUGGING_2026-10-13.en.md) for repairs, reproduction, deployment, and rollback. Chinese/English documentation is aligned.
+- Local port 3218 uses separate demo storage; previous preview data was not changed. No Coze password, replica, production database, or deployment was changed. Code and records are committed on `codex/presentation-activities`; merge status follows the GitHub PR and remote main.
+
+- Pre-publication packaging review fixed the missing `shared/` Docker copy. Runtime-layout import/health/static checks passed and the correction is included in the same PR; Docker-engine acceptance was not performed.
+
 ## 2026-09-23 21:00 · New project's production password verification
 
 - Matched “AI教室工作坊网站 2” to `ai5class.coze.site`; production health reports 0.5.0/PostgreSQL/polling and the deployment page shows running revision `e396bbd`. This new project does not establish migration of the older one.
 - Coze's latest record, `3afa2f2`, reports correcting the production password. An independent sign-in with the user-requested password opened the production teacher workspace and survived refresh plus multiple synchronization cycles. No further password, classroom-data, replica, or deployment changes were made.
 - Cause: development and production storage are separate, and `TEACHER_PASSWORD` only initializes an empty database; configuration changes do not reset an existing password. The domain is not a password-hashing input. Bilingual deployment and incident records now preserve the cause, verification limits, and maintenance procedure without credentials.
-
 
 ## 2026-09-23 14:16 · Verified main merge and environment handoff
 

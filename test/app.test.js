@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { buildApp } from "../server/app.js";
 import { hash } from "../server/store.js";
+import { choiceResults } from "../shared/activities.js";
 
 const password = "isolated-test-password-only";
 const schools = JSON.parse(
@@ -572,6 +573,9 @@ test("500 个同出口参与端随老师完成 1000 次提交，分页和搜索�
     joined: 500,
     discover: 500,
     design: 500,
+    judge: 0,
+    choice: 0,
+    wordcloud: 0,
   });
   const ids = new Set();
   for (let page = 1; page <= 10; page++) {
@@ -1383,4 +1387,418 @@ test("旧版已经发出的链接自动跳到原课堂，新课堂和重启不�
     new URL(currentShare.json().url).pathname,
     `/classroom/${old.id}`,
   );
+});
+
+test("三种活动在各自提交后才可读取全班统计，切换、暂停和关闭继续由老师控制", async (t) => {
+  const f = await fixture(t),
+    a = await f.student(),
+    b = await f.student(),
+    c = await f.student();
+  const results = (who, kind, extra = "") =>
+    request(f.app, "GET", `/api/results?kind=${kind}${extra}`, undefined, who);
+  const answer = (value, name = "新活动同学") => ({
+    ...profile(name),
+    answer: value,
+    activityRevision: 1,
+  });
+  await f.start("judge");
+  assert.equal((await results(a, "judge")).statusCode, 403);
+  assert.equal((await results(a, "judge", "&role=teacher")).statusCode, 401);
+  assert.equal((await f.submit(a, "judge", answer("true"))).statusCode, 200);
+  assert.equal((await f.submit(b, "judge", answer("false"))).statusCode, 200);
+  assert.equal((await f.submit(c, "judge", answer("false"))).statusCode, 200);
+  let stats = (await results(a, "judge")).json();
+  assert.equal(stats.total, 3);
+  assert.deepEqual(
+    stats.options.map((row) => [row.count, row.percentage]),
+    [
+      [1, 33.3],
+      [2, 66.7],
+    ],
+  );
+  await f.control({ action: "stage", stage: "choice" });
+  assert.equal((await results(a, "judge")).statusCode, 403);
+  assert.equal((await results(a, "choice")).statusCode, 403);
+  assert.equal((await f.submit(a, "choice", answer("A"))).statusCode, 200);
+  assert.equal((await f.submit(b, "choice", answer("Z"))).statusCode, 400);
+  await f.control({ action: "pause", paused: true });
+  assert.equal((await f.submit(b, "choice", answer("B"))).statusCode, 409);
+  assert.equal((await results(a, "choice")).json().total, 1);
+  await f.control({ action: "stage", stage: "wordcloud" });
+  assert.equal((await results(a, "wordcloud")).statusCode, 403);
+  assert.equal(
+    (
+      await f.submit(a, "wordcloud", {
+        words: "创造，创造,未来",
+        activityRevision: 1,
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await f.submit(b, "wordcloud", {
+        words: "未来、方便",
+        activityRevision: 1,
+      })
+    ).statusCode,
+    200,
+  );
+  stats = (await results(a, "wordcloud")).json();
+  assert.equal(stats.total, 2);
+  assert.equal(stats.uniqueWords, 3);
+  assert.equal(stats.words.find((word) => word.text === "创造").count, 1);
+  assert.equal(stats.words.find((word) => word.text === "未来").count, 2);
+  assert.equal((await results(c, "wordcloud")).statusCode, 403);
+  await f.control({ action: "page", open: false });
+  assert.equal((await results(a, "wordcloud")).statusCode, 403);
+  assert.equal(
+    (await results(f.teacher, "wordcloud", "&role=teacher")).json().total,
+    2,
+  );
+});
+
+test("修改题目使旧草稿失效，已收集题目不可改写，重启和新课堂保留配置", async (t) => {
+  const f = await fixture(t),
+    student = await f.student();
+  const save = async (kind, body, who = f.teacher) => {
+    const room = await f.app.store.room();
+    return request(
+      f.app,
+      "POST",
+      `/api/teacher/activities/${kind}`,
+      { roomId: room.id, revision: room.revision, ...body },
+      who,
+    );
+  };
+  assert.equal(
+    (
+      await save(
+        "choice",
+        { question: "最想探索的方向？", options: ["学习", "运动"] },
+        student,
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await save("choice", {
+        question: "最想探索的方向？",
+        options: ["学习", "学习"],
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await save("choice", {
+        question: "最想探索的方向？",
+        options: ["学习", "运动"],
+      })
+    ).statusCode,
+    200,
+  );
+  await f.start("choice");
+  assert.equal(
+    (
+      await f.submit(student, "choice", {
+        ...profile(),
+        answer: "A",
+        activityRevision: 1,
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await f.submit(student, "choice", {
+        ...profile(),
+        answer: "A",
+        activityRevision: 2,
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await save("choice", { question: "偷偷换题", options: ["甲", "乙"] }))
+      .statusCode,
+    409,
+  );
+  const row = (await f.board(f.teacher, "choice", "&role=teacher")).json()
+    .rows[0];
+  assert.equal((await f.moderate([row.id])).statusCode, 200);
+  assert.equal(
+    (
+      await save("choice", {
+        question: "删除后也不能换题",
+        options: ["甲", "乙"],
+      })
+    ).statusCode,
+    409,
+  );
+  await f.restart();
+  assert.equal(
+    (await f.app.store.activitySettings()).choice.question,
+    "最想探索的方向？",
+  );
+  await f.control({ action: "page", open: false });
+  const old = await f.app.store.room();
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "POST",
+        "/api/teacher/new-room",
+        { roomId: old.id },
+        f.teacher,
+      )
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await f.app.store.activitySettings()).choice.question,
+    "最想探索的方向？",
+  );
+  assert.equal((await f.app.store.activitySettings()).choice.revision, 1);
+  assert.equal(
+    (
+      await save("choice", {
+        question: "新课堂的新题目",
+        options: ["甲", "乙", "丙"],
+      })
+    ).statusCode,
+    200,
+  );
+});
+
+test("词云统计不受列表分页限制，删除的词从汇总、导出和正文中移除", async (t) => {
+  const f = await fixture(t),
+    people = await Promise.all(Array.from({ length: 65 }, () => f.student()));
+  await f.start("wordcloud");
+  await Promise.all(
+    people.map(async (who, i) => {
+      const response = await f.submit(who, "wordcloud", {
+        ...profile(`同学${i}`),
+        words: `未来,关键词${i}`,
+        activityRevision: 1,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    }),
+  );
+  const result = await request(
+    f.app,
+    "GET",
+    "/api/results?kind=wordcloud",
+    undefined,
+    people[0],
+  );
+  assert.equal(result.json().total, 65);
+  assert.equal(result.json().words[0].count, 65);
+  assert.equal(result.json().uniqueWords, 66);
+  assert.equal(result.json().words.length, 60);
+  const board = (
+    await f.board(f.teacher, "wordcloud", "&role=teacher&q=关键词64")
+  ).json();
+  assert.equal(board.rows.length, 1);
+  assert.equal((await f.moderate([board.rows[0].id])).statusCode, 200);
+  const after = (
+    await request(
+      f.app,
+      "GET",
+      "/api/results?kind=wordcloud",
+      undefined,
+      people[0],
+    )
+  ).json();
+  assert.equal(after.total, 64);
+  assert.equal(after.uniqueWords, 65);
+  assert.equal(after.words[0].count, 64);
+  assert.ok(!JSON.stringify(after).includes("关键词64"));
+  const csv = await request(
+    f.app,
+    "GET",
+    "/api/teacher/export",
+    undefined,
+    f.teacher,
+  );
+  assert.ok(csv.body.includes("未来"));
+  assert.ok(!csv.body.includes("关键词64"));
+  assert.equal(
+    (
+      await f.app.store.get(
+        "SELECT content FROM submissions WHERE id=?",
+        board.rows[0].id,
+      )
+    ).content,
+    "{}",
+  );
+});
+
+test("词云长度、词数校验以及提交重试不会重复计数；同名同词保留人数", async (t) => {
+  const f = await fixture(t),
+    a = await f.student(),
+    b = await f.student();
+  await f.start("wordcloud");
+  for (const words of [
+    "",
+    "a,b,c,d",
+    "长".repeat(13),
+    ["不能传数组"],
+    "控制\u0001字符",
+  ])
+    assert.equal(
+      (
+        await f.submit(a, "wordcloud", {
+          ...profile(),
+          words,
+          activityRevision: 1,
+        })
+      ).statusCode,
+      400,
+    );
+  const body = {
+    ...profile("同名学生"),
+    words: "ＡＩ，AI,未来",
+    activityRevision: 1,
+  };
+  const attempts = await Promise.all(
+    Array.from({ length: 4 }, () => f.submit(a, "wordcloud", body)),
+  );
+  assert.ok(attempts.every((response) => response.statusCode === 200));
+  assert.equal((await f.submit(b, "wordcloud", body)).statusCode, 200);
+  const data = (
+    await request(f.app, "GET", "/api/results?kind=wordcloud", undefined, a)
+  ).json();
+  assert.equal(data.total, 2);
+  assert.equal(data.uniqueWords, 2);
+  assert.ok(data.words.every((word) => word.count === 2));
+});
+
+test("相同票数显示相同比例，零票选项保持 0%", () => {
+  const result = choiceResults(
+    ["A", "B", "C", "D"].map((id) => ({ id, label: id })),
+    ["A", "B", "C"].map((answer) => ({
+      content: JSON.stringify({ answer }),
+      n: 1,
+    })),
+  );
+  assert.deepEqual(
+    result.options.map((row) => row.percentage),
+    [33.3, 33.3, 33.3, 0],
+  );
+});
+
+test("500 名学生完成三种新活动，集中提交、结果读取和删除保持全量统计", async (t) => {
+  const f = await fixture(t);
+  const students = await Promise.all(
+    Array.from({ length: 500 }, () => f.student()),
+  );
+  for (const kind of ["judge", "choice", "wordcloud"]) {
+    await f.start(kind);
+    const submissions = await Promise.all(
+      students.map((student, i) =>
+        f.submit(student, kind, {
+          ...profile(`并发同学${i}`),
+          activityRevision: 1,
+          ...(kind === "wordcloud"
+            ? { words: `未来,方向${i % 10}` }
+            : {
+                answer:
+                  kind === "judge" ? (i % 2 ? "true" : "false") : "ABCD"[i % 4],
+              }),
+        }),
+      ),
+    );
+    assert.ok(
+      submissions.every((r) => r.statusCode === 200),
+      submissions.find((r) => r.statusCode !== 200)?.body,
+    );
+    const results = await Promise.all(
+      students.map((student) =>
+        request(f.app, "GET", `/api/results?kind=${kind}`, undefined, student),
+      ),
+    );
+    assert.ok(
+      results.every((r) => r.statusCode === 200 && r.json().total === 500),
+    );
+    const stats = results[0].json();
+    if (kind === "wordcloud") {
+      assert.equal(stats.words.find((word) => word.text === "未来").count, 500);
+      assert.equal(stats.uniqueWords, 11);
+    } else
+      assert.ok(
+        stats.options.every(
+          (option) => option.count === 500 / stats.options.length,
+        ),
+      );
+  }
+  const row = (await f.board(f.teacher, "wordcloud", "&role=teacher")).json()
+    .rows[0];
+  assert.equal((await f.moderate([row.id])).statusCode, 200);
+  const stats = (
+    await request(
+      f.app,
+      "GET",
+      "/api/results?kind=wordcloud",
+      undefined,
+      students[0],
+    )
+  ).json();
+  assert.equal(stats.total, 499);
+  assert.equal(stats.words.find((word) => word.text === "未来").count, 499);
+});
+
+test("0.5 SQLite 约束升级保留删除回执、会话、课堂及自增序号，并接受新活动", async (t) => {
+  const f = await fixture(t, { databaseUrl: "" }),
+    person = await f.student();
+  await f.start();
+  await f.submit(person, "discover", discovery("升级验证"));
+  const id = (await f.board(f.teacher, "discover", "&role=teacher")).json()
+    .rows[0].id;
+  await f.moderate([id]);
+  const originalRoom = await f.app.store.room();
+  const originalRow = await f.app.store.get(
+    "SELECT * FROM submissions WHERE id=?",
+    id,
+  );
+  await f.app.close();
+  const db = new DatabaseSync(join(f.dataDir, "classroom.sqlite"));
+  db.exec(`BEGIN;
+    CREATE TABLE old_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,room_id TEXT NOT NULL REFERENCES rooms(id),
+      participant_id TEXT NOT NULL REFERENCES participants(id),kind TEXT NOT NULL CHECK(kind IN ('discover','design')),
+      content TEXT NOT NULL,created_at INTEGER NOT NULL,deleted_at INTEGER,UNIQUE(participant_id,kind));
+    INSERT INTO old_submissions SELECT * FROM submissions;
+    DROP TABLE submissions;
+    ALTER TABLE old_submissions RENAME TO submissions;
+    UPDATE sqlite_sequence SET seq=200 WHERE name='submissions';
+    COMMIT;`);
+  db.close();
+  await f.restart();
+  assert.equal((await f.app.store.room()).id, originalRoom.id);
+  assert.deepEqual(
+    await f.app.store.get("SELECT * FROM submissions WHERE id=?", id),
+    originalRow,
+  );
+  assert.equal(
+    (await request(f.app, "GET", "/api/teacher/state", undefined, f.teacher))
+      .statusCode,
+    200,
+  );
+  await f.control({ action: "stage", stage: "wordcloud" });
+  assert.equal(
+    (
+      await f.submit(person, "wordcloud", {
+        words: "旧数据保留",
+        activityRevision: 1,
+      })
+    ).statusCode,
+    200,
+  );
+  const row = (await f.board(f.teacher, "wordcloud", "&role=teacher")).json()
+    .rows[0];
+  assert.ok(row.id > 200);
+  await f.restart();
+  assert.equal((await f.app.store.room()).stage, "wordcloud");
 });

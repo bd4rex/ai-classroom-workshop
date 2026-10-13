@@ -11,6 +11,7 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3218 DATA_DIR=/app/data
 COPY --from=build --chown=node:node /app/package*.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/server ./server
+COPY --from=build --chown=node:node /app/shared ./shared
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/config ./config
 COPY --from=build --chown=node:node /app/dist ./dist

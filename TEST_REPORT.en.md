@@ -2,6 +2,21 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-13 · 0.6.0 activities and fixed canvas
+
+- Local SQLite `npm run check`: 46 of 50 passed, four PostgreSQL-specific tests skipped. PostgreSQL `npm test`: all 50 passed. Production build passed. No dependencies added.
+- Added coverage includes independent result gates, teacher authorization/configuration locks, stale question versions, complete aggregation and deletion, term normalization, equal percentages for equal votes, cloud layout, and 0.5 constraint upgrades in SQLite/PostgreSQL.
+- Both stores passed a new three-activity 500-participant check: 500 joins, 1,500 submissions, 1,500 result reads, and deletion aggregation. These are injected application requests with local databases, not Coze production HTTP capacity acceptance.
+- Browser checks passed for question editing, automatic activity following, submission-gated results, pause/close/resume, fullscreen, and populated teacher chart transitions. Maximum 60-character prompts, six 24-character options, and three 12-character terms fit without clipped controls or content.
+- Student pages retained 16:9 without document scrolling at 1920 × 1080, 1366 × 768, 1280 × 720, 1024 × 768, and 1280 × 800. Teacher pages scroll normally. No new script exceptions after repairs.
+- Isolated data only; a separate local demo runs on 3218. Existing preview storage and Coze deployment were not changed. The [new record](deploy/DEBUGGING_2026-10-13.en.md) captures failures, repairs, reproduction, and rollback. The [sanitized summary](deploy/evidence/validation-2026-10-13.json) contains no student data, cookies, or credentials.
+
+- Runtime packaging check: Dockerfile now copies `shared/`; an assembled runtime directory passed imports, health, and the static teacher page. An actual Docker image/container was not built or run.
+
+## 2026-09-23 · 0.5.0 historical validation
+
+The following records describe that earlier run, not production acceptance of 0.6.0. Historical browser scripts cover Discover/Design; use the current checks above for the new activities.
+
 Date: 2026-09-23; version 0.5.0. Local macOS, Node.js 24.14.1, PostgreSQL 16, Chromium. Automated checks and load tests use isolated databases and synthetic identities, never production classroom submissions.
 
 ## Automated checks
@@ -20,13 +35,13 @@ Date: 2026-09-23; version 0.5.0. Local macOS, Node.js 24.14.1, PostgreSQL 16, Ch
 
 Results below use local loopback networking and cannot establish capacity for Coze's 1-core/2-GB replicas:
 
-| Operation | Requests | P95 (ms) | P99 (ms) |
-| --- | ---: | ---: | ---: |
-| join | 500 | 212 | 214 |
-| submit-discover | 500 | 167 | 168 |
-| submit-design | 500 | 124 | 132 |
-| poll | 10135 | 5 | 47 |
-| board | 500 | 173 | 185 |
+| Operation       | Requests | P95 (ms) | P99 (ms) |
+| --------------- | -------: | -------: | -------: |
+| join            |      500 |      212 |      214 |
+| submit-discover |      500 |      167 |      168 |
+| submit-design   |      500 |      124 |      132 |
+| poll            |    10135 |        5 |       47 |
+| board           |      500 |      173 |      185 |
 
 13688 requests, 0 unexpected errors; peak 523 in flight.
 

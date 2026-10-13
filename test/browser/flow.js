@@ -1,3 +1,4 @@
+// Historical 0.5 Discover/Design flow. For 0.6 activities, see deploy/DEBUGGING_2026-10-13.md.
 // prettier-ignore
 // Run only against the isolated QA server on port 3219 (see TEST_REPORT.md).
 async (page) => {

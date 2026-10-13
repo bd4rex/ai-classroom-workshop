@@ -9,11 +9,13 @@
 3. 先备份平台原 `.coze`，再参考 [无密钥配置模板](coze.toml.example) 设置开发和生产命令。开发需限定 `--watch-path`，避免 Vite 临时文件触发无限重启。生产必须设置 `REQUIRE_SHARED_DATABASE=true`。
 4. 保持 `DATABASE_SCHEMA=public`，让平台发现表结构。已有数据库先走下文迁移流程；空库首次启动会创建课堂。初始教师密码通过平台环境配置，不写进 Git；已有数据库里的密码不会被环境变量覆盖。
 5. 执行 `pnpm install`、`pnpm run check`。注意默认检查中的 PostgreSQL 专项会跳过；需要实测共享库时按下文安全构造 `TEST_DATABASE_URL`。
-6. 检查开发 `/api/health` 显示 `version: 0.5.0`、`storage: postgres`、`syncMode: polling`。在独立标签页打开 `/teacher`，登录、复制学生链接，用另一浏览器上下文完成两个主题的演练。
+6. 检查开发 `/api/health` 显示 `version: 0.6.0`、`storage: postgres`、`syncMode: polling`。在独立标签页打开 `/teacher`，登录、复制学生链接，用另一浏览器上下文完成三个活动的演练。
 7. 生产发布时确认选用生产数据库。首次空白落地不要把开发演练学生数据复制过去；已有生产数据不要选择“用开发数据覆盖生产”。平台的开发／生产数据库不是同一份。
 8. 发布完成后，在实际生产域名执行本文验收。页面显示“部署成功”不替代健康、登录和原固定链接检查。记录上线提交、时间、环境、结果与剩余项。
 
 ## 已有项目升级顺序
+
+从 0.5 升级到 0.6 且继续使用原数据库时，先备份、停写，再启动新代码，提交类型约束会自动迁移，课堂 ID、会话和删除回执保留。不要对已有 PostgreSQL 再次执行导入。新活动的学生端改为 16:9 浏览器展示，教师后台仍允许滚动；见 [0.6 升级与验证记录](DEBUGGING_2026-10-13.md)。下方空库导入步骤仅用于更换存储后端。
 
 按顺序处理：**确认生产数据来源 → 停止写入并备份 → 预检 → 空目标库迁移 → 核对原字段 → 更新代码和配置 → 启动 → 验收**。不能先启动新应用让它生成新课堂，再尝试导入旧课堂。
 
@@ -49,7 +51,7 @@ node -e 'console.log(Object.fromEntries(["PGHOST","PGPORT","PGUSER","PGPASSWORD"
 node --input-type=module -e 'import {spawnSync} from "node:child_process";let connection=process.env.DATABASE_URL||process.env.PGDATABASE_URL;if(!connection){if(!process.env.PGHOST||!process.env.PGDATABASE)throw new Error("Missing PG environment");const u=new URL("postgresql://localhost");u.hostname=process.env.PGHOST;u.port=process.env.PGPORT||"5432";u.username=process.env.PGUSER||"";u.password=process.env.PGPASSWORD||"";u.pathname="/"+process.env.PGDATABASE;connection=u.href;}const r=spawnSync("pnpm",["run","check"],{env:{...process.env,TEST_DATABASE_URL:connection},stdio:"inherit"});process.exitCode=r.status??1;'
 ```
 
-预期：40 项通过、0 项失败，并完成构建。缺少 `TEST_DATABASE_URL` 的默认 SQLite 检查是 37 项通过、3 项跳过，不能把它记成共享数据库已验证。不要用 `env`、`printenv` 或 `set -x` 输出连接密钥。
+预期：50 项通过、0 项失败，并完成构建。缺少 `TEST_DATABASE_URL` 的默认 SQLite 检查是 46 项通过、4 项跳过，不能把它记成共享数据库已验证。不要用 `env`、`printenv` 或 `set -x` 输出连接密钥。
 
 ## 保留旧课堂和作品
 
@@ -69,7 +71,7 @@ node --env-file-if-exists=.env scripts/migrate-postgres.js /安全备份/classro
 
 ## 验收与回退
 
-- `/api/health` 应显示 `storage: postgres`、`syncMode: polling`、版本 `0.5.0`；必须在实际生产域名核对。
+- `/api/health` 应显示 `storage: postgres`、`syncMode: polling`、版本 `0.6.0`；必须在实际生产域名核对。
 - 教师登录后跨请求、刷新和实例重启保持登录；分享链接持续不变。
 - 未提交学生看不到同学内容；教师切换主题，学生在下一次同步跟随；删除后师生列表和导出均移除正文。
 - 每秒约 167 次状态查询是 500 人、平均 3 秒同步的参考值，还要计入进入、集中提交和列表请求。
@@ -91,16 +93,16 @@ node --env-file-if-exists=.env scripts/migrate-postgres.js /安全备份/classro
 
 若显示“请求来源不正确”，检查 `PUBLIC_URL` 是否包含新域名；若登录后马上退回登录页，检查会话、Cookie 和共享数据库。不要把这些现象都当作密码错误。2026-09-23 新项目的生产复核见[排查记录](DEBUGGING_2026-09-23.md)。
 
-| 现象 | 检查顺序 |
-| --- | --- |
-| 密码正确但马上显示未登录 | 先看实际生产 health 是否为 PostgreSQL；确认所有实例使用同一库；再在顶层标签页检查 Cookie。不要反复重置密码 |
-| 新复制链接可用，旧链接无效 | 比较课堂 ID、数据库来源、是否新建过课堂；找原库备份。不要把未知 ID 自动跳到新课堂 |
-| “课堂定时同步” | PostgreSQL 正常状态；测试老师切主题后学生在下一次同步跟随 |
-| “连接中断，正在重试” | 检查 `/api/session` 的状态码及内容类型、应用日志和数据库连接；HTTP 200 HTML 也可能是代理错误页 |
-| 并发提交失败 | 核对含 `room_changes` 的修复版本；查看脱敏错误码、数据库连接等待、网关限流与实例资源；用隔离测试复现 |
-| 创建数据库后仍提示缺少配置 | 重连沙箱、新建终端，检查变量存在性；生产还要检查生产库是否绑定 |
-| 预览一直重启 | 检查是否误用裸 `--watch`，改为模板中的两个 `--watch-path` |
-| 迁移提示目标已有数据 | 立即停止覆盖尝试；先识别数据来源并备份。工具的拒绝是保护，不应通过清表绕过 |
+| 现象                       | 检查顺序                                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 密码正确但马上显示未登录   | 先看实际生产 health 是否为 PostgreSQL；确认所有实例使用同一库；再在顶层标签页检查 Cookie。不要反复重置密码 |
+| 新复制链接可用，旧链接无效 | 比较课堂 ID、数据库来源、是否新建过课堂；找原库备份。不要把未知 ID 自动跳到新课堂                          |
+| “课堂定时同步”             | PostgreSQL 正常状态；测试老师切主题后学生在下一次同步跟随                                                  |
+| “连接中断，正在重试”       | 检查 `/api/session` 的状态码及内容类型、应用日志和数据库连接；HTTP 200 HTML 也可能是代理错误页             |
+| 并发提交失败               | 核对含 `room_changes` 的修复版本；查看脱敏错误码、数据库连接等待、网关限流与实例资源；用隔离测试复现       |
+| 创建数据库后仍提示缺少配置 | 重连沙箱、新建终端，检查变量存在性；生产还要检查生产库是否绑定                                             |
+| 预览一直重启               | 检查是否误用裸 `--watch`，改为模板中的两个 `--watch-path`                                                  |
+| 迁移提示目标已有数据       | 立即停止覆盖尝试；先识别数据来源并备份。工具的拒绝是保护，不应通过清表绕过                                 |
 
 每次上线把结果追加到 [交接日志](../TIMESTAMP_LOG.md)，维护 [验证记录](../TEST_REPORT.md)；故障过程参考 [本次完整记录](DEBUGGING_2026-09-23.md)。
 

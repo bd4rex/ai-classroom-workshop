@@ -2,6 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { openDatabase } from "./database.js";
+import { defaultActivities, presentationKinds } from "../shared/activities.js";
 
 export class AppError extends Error {
   constructor(message, statusCode = 400) {
@@ -56,6 +57,8 @@ export async function createStore(directory, options = {}) {
   async function newRoom() {
     return transaction(async () => {
       await lockCurrent(true);
+      const previousId = await meta("current");
+      const settings = previousId && (await meta(`activities:${previousId}`));
       await run(
         "UPDATE rooms SET discover_open=0,design_open=0,page_open=0,stage='ended',paused=1,revision=revision+1",
       );
@@ -67,6 +70,16 @@ export async function createStore(directory, options = {}) {
         Date.now(),
       );
       await setMeta("current", id);
+      if (settings)
+        await setMeta(
+          `activities:${id}`,
+          Object.fromEntries(
+            Object.entries(settings).map(([kind, value]) => [
+              kind,
+              { ...value, revision: 1 },
+            ]),
+          ),
+        );
       return room(id);
     });
   }
@@ -89,6 +102,12 @@ export async function createStore(directory, options = {}) {
         !!value.page_open && !value.paused && value.stage === "discover",
       designOpen:
         !!value.page_open && !value.paused && value.stage === "design",
+      ...Object.fromEntries(
+        presentationKinds.map((kind) => [
+          `${kind}Open`,
+          !!value.page_open && !value.paused && value.stage === kind,
+        ]),
+      ),
       createdAt: value.created_at,
     };
   }
@@ -121,7 +140,20 @@ export async function createStore(directory, options = {}) {
       ).n,
       discover: rows.find((r) => r.kind === "discover")?.n || 0,
       design: rows.find((r) => r.kind === "design")?.n || 0,
+      ...Object.fromEntries(
+        presentationKinds.map((kind) => [
+          kind,
+          rows.find((r) => r.kind === kind)?.n || 0,
+        ]),
+      ),
     };
+  }
+  async function activitySettings(id) {
+    id ??= await meta("current");
+    return (
+      (id && (await meta(`activities:${id}`))) ||
+      structuredClone(defaultActivities)
+    );
   }
   async function initialize(passwordFactory) {
     return transaction(async () => {
@@ -147,6 +179,7 @@ export async function createStore(directory, options = {}) {
     control,
     newRoom,
     counts,
+    activitySettings,
     transaction,
     lockCurrent,
     lockParticipant,

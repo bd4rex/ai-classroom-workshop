@@ -1,0 +1,95 @@
+{
+  "date": "2026-10-13",
+  "version": "0.6.0",
+  "scope": "Local isolated SQLite/PostgreSQL and browser validation; no production deployment",
+  "automated": {
+    "sqlite": {
+      "total": 50,
+      "passed": 46,
+      "skipped": 4,
+      "failed": 0
+    },
+    "postgres": {
+      "total": 50,
+      "passed": 50,
+      "skipped": 0,
+      "failed": 0
+    },
+    "productionBuild": "passed"
+  },
+  "newActivityConcurrency": {
+    "transport": "Fastify injection",
+    "students": 500,
+    "joins": 500,
+    "submissions": 1500,
+    "resultReads": 1500,
+    "stores": ["sqlite", "postgres"],
+    "passed": true,
+    "productionCapacityAcceptance": false
+  },
+  "browser": {
+    "baseCanvas": [1440, 810],
+    "aspectRatio": "16:9",
+    "viewports": [
+      {
+        "width": 1920,
+        "height": 1080,
+        "documentOverflow": false
+      },
+      {
+        "width": 1366,
+        "height": 768,
+        "documentOverflow": false
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "documentOverflow": false
+      },
+      {
+        "width": 1024,
+        "height": 768,
+        "documentOverflow": false
+      },
+      {
+        "width": 1280,
+        "height": 800,
+        "documentOverflow": false
+      }
+    ],
+    "maximumContent": {
+      "prompt": 60,
+      "choiceOptions": 6,
+      "optionLabel": 24,
+      "terms": 3,
+      "termCharacters": 12
+    },
+    "verified": [
+      "teacher editing",
+      "independent submission gates",
+      "automatic activity following",
+      "pie charts",
+      "word cloud",
+      "pause/close/resume",
+      "fullscreen",
+      "populated teacher chart transitions"
+    ],
+    "newScriptExceptionsAfterFix": 0
+  },
+  "migration": {
+    "sqlite05PreservesIdsReceiptsSequenceAndSessions": true,
+    "postgres05ConcurrentReplicaUpgrade": true
+  },
+  "boundaries": [
+    "Synthetic local data only",
+    "Previous local preview storage unchanged",
+    "Coze production not updated",
+    "Prior two-process HTTP load test not rerun",
+    "Physical classroom devices and production gateway not accepted"
+  ],
+  "packaging": {
+    "dockerSharedDirectoryIncluded": true,
+    "assembledRuntimeSmoke": "passed: import, health, static teacher page",
+    "dockerEngineBuildAndRun": false
+  }
+}

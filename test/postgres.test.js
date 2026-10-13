@@ -193,6 +193,9 @@ test(
         joined: 1,
         discover: 0,
         design: 0,
+        judge: 0,
+        choice: 0,
+        wordcloud: 0,
       });
       const deleted = await dest.store.get(
         "SELECT content,deleted_at FROM submissions",
@@ -266,5 +269,80 @@ test(
       await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await pool.end();
     }
+  },
+);
+
+test(
+  "0.5 PostgreSQL 的旧类型约束可并发升级，新活动在两个实例间共享",
+  { skip: !databaseUrl },
+  async (t) => {
+    const schema = `test_${randomUUID().replaceAll("-", "")}`;
+    const options = {
+      databaseUrl,
+      databaseSchema: schema,
+      initialPassword: password,
+      serveStatic: false,
+    };
+    const initial = await buildApp(options);
+    const room = await initial.store.room();
+    const teacher = cookie(
+      await req(initial, "POST", "/api/login", { password }),
+    );
+    const student = cookie(
+      await req(initial, "POST", "/api/join", { classroomId: room.id }),
+    );
+    await initial.close();
+    const pool = new pg.Pool({ connectionString: databaseUrl });
+    const apps = [];
+    t.after(async () => {
+      await Promise.all(apps.map((app) => app.close()));
+      await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+      await pool.end();
+    });
+    await pool.query(`ALTER TABLE "${schema}".submissions DROP CONSTRAINT submissions_kind_check;
+    ALTER TABLE "${schema}".submissions ADD CONSTRAINT submissions_kind_check CHECK(kind IN ('discover','design'))`);
+    apps.push(...(await Promise.all([buildApp(options), buildApp(options)])));
+    const [a, b] = apps;
+    for (const change of [
+      { action: "page", open: true },
+      { action: "stage", stage: "judge" },
+    ]) {
+      const current = await a.store.room();
+      assert.equal(
+        (
+          await req(
+            a,
+            "POST",
+            "/api/teacher/control",
+            { roomId: current.id, revision: current.revision, ...change },
+            teacher,
+          )
+        ).statusCode,
+        200,
+      );
+    }
+    const state = (
+      await req(b, "GET", "/api/teacher/state", undefined, teacher)
+    ).json();
+    const submitted = await req(
+      b,
+      "POST",
+      "/api/student/submit/judge",
+      {
+        name: "升级学生",
+        school: state.schools[0],
+        answer: "true",
+        activityRevision: 1,
+      },
+      student,
+    );
+    assert.equal(submitted.statusCode, 200, submitted.body);
+    assert.equal(
+      (
+        await req(a, "GET", "/api/results?kind=judge", undefined, student)
+      ).json().total,
+      1,
+    );
+    assert.equal((await a.store.room()).id, room.id);
   },
 );
