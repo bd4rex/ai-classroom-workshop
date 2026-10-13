@@ -11,6 +11,8 @@
 - Recorded chart-transition crashes, maximum-content overflow, unequal rounding for equal votes, count-fixture failures, and legacy database constraints. See the [investigation](deploy/DEBUGGING_2026-10-13.en.md) for repairs, reproduction, deployment, and rollback. Chinese/English documentation is aligned.
 - Local port 3218 uses separate demo storage; previous preview data was not changed. No Coze password, replica, production database, or deployment was changed. Code and records are committed on `codex/presentation-activities`; merge status follows the GitHub PR and remote main.
 
+- Pre-publication packaging review fixed the missing `shared/` Docker copy. Runtime-layout import/health/static checks passed and the correction is included in the same PR; Docker-engine acceptance was not performed.
+
 ## 2026-09-23 21:00 · New project's production password verification
 
 - Matched “AI教室工作坊网站 2” to `ai5class.coze.site`; production health reports 0.5.0/PostgreSQL/polling and the deployment page shows running revision `e396bbd`. This new project does not establish migration of the older one.

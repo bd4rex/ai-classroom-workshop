@@ -11,6 +11,8 @@
 - Student pages retained 16:9 without document scrolling at 1920 × 1080, 1366 × 768, 1280 × 720, 1024 × 768, and 1280 × 800. Teacher pages scroll normally. No new script exceptions after repairs.
 - Isolated data only; a separate local demo runs on 3218. Existing preview storage and Coze deployment were not changed. The [new record](deploy/DEBUGGING_2026-10-13.en.md) captures failures, repairs, reproduction, and rollback. The [sanitized summary](deploy/evidence/validation-2026-10-13.json) contains no student data, cookies, or credentials.
 
+- Runtime packaging check: Dockerfile now copies `shared/`; an assembled runtime directory passed imports, health, and the static teacher page. An actual Docker image/container was not built or run.
+
 ## 2026-09-23 · 0.5.0 historical validation
 
 The following records describe that earlier run, not production acceptance of 0.6.0. Historical browser scripts cover Discover/Design; use the current checks above for the new activities.

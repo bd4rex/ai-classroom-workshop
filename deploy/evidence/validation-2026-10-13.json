@@ -86,5 +86,10 @@
     "Coze production not updated",
     "Prior two-process HTTP load test not rerun",
     "Physical classroom devices and production gateway not accepted"
-  ]
+  ],
+  "packaging": {
+    "dockerSharedDirectoryIncluded": true,
+    "assembledRuntimeSmoke": "passed: import, health, static teacher page",
+    "dockerEngineBuildAndRun": false
+  }
 }
