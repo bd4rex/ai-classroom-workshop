@@ -109,11 +109,16 @@ export async function openDatabase(directory, options = {}) {
           CREATE TABLE IF NOT EXISTS submissions (
             id BIGSERIAL PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id),
             participant_id TEXT NOT NULL REFERENCES participants(id), kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
-            content TEXT NOT NULL, created_at BIGINT NOT NULL, deleted_at BIGINT, UNIQUE(participant_id,kind));
+            content TEXT NOT NULL, created_at BIGINT NOT NULL, deleted_at BIGINT, activity_id TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS participants_room ON participants(room_id);
-          CREATE INDEX IF NOT EXISTS submissions_room ON submissions(room_id,kind,id);
           CREATE INDEX IF NOT EXISTS teachers_expires ON teachers(expires);
         `);
+        await db.run(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS activity_id TEXT;
+          UPDATE submissions SET activity_id=kind WHERE activity_id IS NULL;
+          ALTER TABLE submissions ALTER COLUMN activity_id SET NOT NULL;
+          ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_participant_id_kind_key;
+          CREATE UNIQUE INDEX IF NOT EXISTS submissions_participant_activity ON submissions(participant_id,activity_id);
+          CREATE INDEX IF NOT EXISTS submissions_activity ON submissions(room_id,activity_id,id);`);
         const constraint = await db.get(
           "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='submissions'::regclass AND conname='submissions_kind_check'",
         );
@@ -182,9 +187,14 @@ export async function openDatabase(directory, options = {}) {
     db.exec(
       "ALTER TABLE rooms ADD COLUMN data_revision INTEGER NOT NULL DEFAULT 0",
     );
-  // SQLite cannot alter CHECK constraints. Rebuild atomically, preserving IDs,
-  // removal receipts and the AUTOINCREMENT high-water mark for older databases.
+  // Rebuild old submission constraints atomically. Existing kind values become
+  // activity IDs, preserving records, receipts and AUTOINCREMENT high-water marks.
+  const submissionColumns = db.prepare("PRAGMA table_info(submissions)").all();
+  const hasActivityId = submissionColumns.some(
+    (column) => column.name === "activity_id",
+  );
   if (
+    !hasActivityId ||
     !db
       .prepare("SELECT sql FROM sqlite_master WHERE name='submissions'")
       .get()
@@ -201,11 +211,11 @@ export async function openDatabase(directory, options = {}) {
           participant_id TEXT NOT NULL REFERENCES participants(id),
           kind TEXT NOT NULL CHECK(kind IN ('discover','design','judge','choice','wordcloud')),
           content TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER,
-          UNIQUE(participant_id,kind));
-        INSERT INTO submissions_next SELECT id,room_id,participant_id,kind,content,created_at,deleted_at FROM submissions;
+          activity_id TEXT NOT NULL, UNIQUE(participant_id,activity_id));
+        INSERT INTO submissions_next SELECT id,room_id,participant_id,kind,content,created_at,deleted_at,${hasActivityId ? "activity_id" : "kind"} FROM submissions;
         DROP TABLE submissions;
         ALTER TABLE submissions_next RENAME TO submissions;
-        CREATE INDEX submissions_room ON submissions(room_id,kind,id);`);
+        CREATE INDEX submissions_room ON submissions(room_id,activity_id,id);`);
       db.prepare(
         "UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='submissions'",
       ).run(sequence);

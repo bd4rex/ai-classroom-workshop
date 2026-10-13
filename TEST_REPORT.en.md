@@ -2,6 +2,15 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-13 · 0.7.0 editable activity lists
+
+- SQLite `npm test`: 51 of 56 passed, five PostgreSQL-only checks skipped. Local shared PostgreSQL: all 56 passed. Syntax and production build passed; no dependencies added.
+- Coverage includes independent same-type answers/results, per-activity gates/locks, CSV identity, ordering, limits, permissions, stale requests, deletion/submission races, empty lists, restart, inheritance, old-link isolation, 0.5/0.6 SQLite/PostgreSQL upgrades, and two-instance initialization.
+- Browser checks covered adding/editing all types, moving, automatic following, separate same-type unlocks, pies/clouds, and deletion confirmation. Test API deletion of synthetic data synchronized waiting/empty states; refresh did not restore defaults.
+- Students retained a single 16:9 canvas at 1024 × 768 and 1366 × 768, including a 50-activity list. No document scrolling or new teacher/student script errors. Teacher scrolling is intentional.
+- Existing 500-student / 1,500-response cases passed on both stores using local injected requests, not production capacity acceptance.
+- The original isolated 3218 demo was fully backed up and upgraded; old columns matched and 54 activity IDs were backfilled before adding an editable example. Coze production is unchanged. See the [implementation/investigation record](deploy/DEBUGGING_ACTIVITIES_2026-10-13.en.md) and [sanitized evidence](deploy/evidence/validation-2026-10-13-v070.json) for reproduction and rollback.
+
 ## 2026-10-13 · 0.6.0 activities and fixed canvas
 
 - Local SQLite `npm run check`: 46 of 50 passed, four PostgreSQL-specific tests skipped. PostgreSQL `npm test`: all 50 passed. Production build passed. No dependencies added.

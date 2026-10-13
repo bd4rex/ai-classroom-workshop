@@ -33,6 +33,22 @@ export const defaultActivities = {
   },
 };
 
+export const maxActivities = 50;
+
+// 0.6 stored one configuration per type. Its keys become stable activity IDs.
+export function normalizeActivities(value) {
+  if (Array.isArray(value)) return structuredClone(value);
+  return Object.entries(value || defaultActivities).map(([kind, settings]) => ({
+    id: kind,
+    kind,
+    ...structuredClone(settings),
+  }));
+}
+
+export function classroomActivities(state) {
+  return state.activities ?? normalizeActivities(state.activitySettings);
+}
+
 export function splitWords(text) {
   return [
     ...new Set(
