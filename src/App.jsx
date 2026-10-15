@@ -33,6 +33,7 @@ import {
 } from "../shared/activities.js";
 import {
   StudentPresentation,
+  TeacherDisplayDialog,
   ActivityEditor,
   ActivityResults,
 } from "./Presentation.jsx";
@@ -106,7 +107,7 @@ function useClassroom(role, classroomId) {
       try {
         const query = new URLSearchParams({
           role,
-          ...(role === "student" ? { classroomId } : {}),
+          ...(classroomId || role === "student" ? { classroomId } : {}),
         });
         let result = await api(`/api/session?${query}`);
         if (!active) return;
@@ -128,8 +129,9 @@ function useClassroom(role, classroomId) {
         }
       } catch (e) {
         if (active) {
-          if (e.status === 401) setState(null);
-          else setError(e.message);
+          if ([401, 404, 410].includes(e.status)) setState(null);
+          if (e.status === 410) setEnded(true);
+          setError(e.status === 401 ? "" : e.message);
         }
       } finally {
         if (active) setLoading(false);
@@ -148,7 +150,7 @@ function useClassroom(role, classroomId) {
     if (!authenticated) return;
     const query = new URLSearchParams({
       role,
-      ...(role === "student" ? { classroomId } : {}),
+      ...(classroomId || role === "student" ? { classroomId } : {}),
     });
     const update = () => queue.current.update();
     const stopEvents =
@@ -207,7 +209,7 @@ function ErrorText({ children }) {
     </p>
   ) : null;
 }
-function Header({ teacher, state, connection, onLogout }) {
+function Header({ teacher, state, connection, onLogout, teacherDisplay }) {
   const syncLabels = {
     live: "课堂实时同步",
     polling: "课堂定时同步",
@@ -248,17 +250,18 @@ function Header({ teacher, state, connection, onLogout }) {
         ) : (
           <span className="header-note">人工智能通识课</span>
         )}
-        {teacher && state ? (
-          <button className="text-button" onClick={onLogout}>
-            <LogOut size={15} />
-            退出
-          </button>
-        ) : !teacher ? (
-          <a className="role-link" href="/teacher">
-            教师入口
-            <ArrowRight size={14} />
-          </a>
-        ) : null}
+        {teacherDisplay ||
+          (teacher && state ? (
+            <button className="text-button" onClick={onLogout}>
+              <LogOut size={15} />
+              退出
+            </button>
+          ) : !teacher ? (
+            <a className="role-link" href="/teacher">
+              教师入口
+              <ArrowRight size={14} />
+            </a>
+          ) : null)}
       </div>
     </header>
   );
@@ -906,7 +909,73 @@ function StudentClassroom({ state, refresh }) {
     </>
   );
 }
-function Share({ room }) {
+function DisplayPinSettings({ roomId, pin, refresh }) {
+  const [value, setValue] = useState(pin || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => setValue(pin || ""), [pin]);
+  const save = async (random = false) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api("/api/teacher/display-pin", {
+        roomId,
+        ...(random ? { random: true } : { pin: value }),
+      });
+      setValue(result.pin);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="display-pin-setting"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+    >
+      <label>
+        教师展示码
+        <input
+          aria-label="四位教师展示码"
+          value={value}
+          onChange={(event) =>
+            setValue(event.target.value.replace(/\D/g, "").slice(0, 4))
+          }
+          inputMode="numeric"
+          pattern="[0-9]{4}"
+          maxLength={4}
+          autoComplete="off"
+          required
+          disabled={busy}
+        />
+      </label>
+      <button
+        type="submit"
+        className="text-button"
+        disabled={busy || value === pin || !/^\d{4}$/.test(value)}
+      >
+        保存
+      </button>
+      <button
+        type="button"
+        className="text-button"
+        onClick={() => save(true)}
+        disabled={busy}
+      >
+        随机换一个
+      </button>
+      <p>授课老师在同一链接输入这四位数字，即可看结果。</p>
+      <ErrorText>{error}</ErrorText>
+    </form>
+  );
+}
+function Share({ room, displayPin, refresh }) {
   const [share, setShare] = useState(null),
     [copied, setCopied] = useState(false),
     [error, setError] = useState("");
@@ -979,6 +1048,12 @@ function Share({ room }) {
         readOnly
         onFocus={(e) => e.target.select()}
       />
+      <DisplayPinSettings
+        key={room.id}
+        roomId={room.id}
+        pin={displayPin}
+        refresh={refresh}
+      />
       {share &&
         ["localhost", "127.0.0.1", "[::1]"].includes(
           new URL(share.url).hostname,
@@ -1008,8 +1083,9 @@ function ResponseBoard({
   fixedKind,
   refreshClassroom,
   activityList,
+  readOnly = false,
 }) {
-  const student = role === "student";
+  const student = role === "student" || readOnly;
   const [selected, setSelected] = useState(
     activityList.some(([id]) => id === state.room.stage)
       ? state.room.stage
@@ -1138,18 +1214,22 @@ function ResponseBoard({
       <div className="section-heading">
         <div>
           <span className="eyebrow">
-            {student
-              ? "THINK FIRST, SHARE TOGETHER"
-              : "ALL CLASSROOM RESPONSES"}
+            {readOnly
+              ? "教师展示"
+              : student
+                ? "THINK FIRST, SHARE TOGETHER"
+                : "ALL CLASSROOM RESPONSES"}
           </span>
           <h2 id="board-title">
             {student ? "同学的分享" : "全班提交记录"}
             <span className="total-badge">{state.counts[kind]}</span>
           </h2>
           <p>
-            {student
-              ? "你已完成本主题，现在可以看看大家的想法。"
-              : "按主题、学校或关键词定位提交；删除后学生端同步移除，作品正文永久清除。"}
+            {readOnly
+              ? "跟随当前活动，自动更新同学的分享。"
+              : student
+                ? "你已完成本主题，现在可以看看大家的想法。"
+                : "按主题、学校或关键词定位提交；删除后学生端同步移除，作品正文永久清除。"}
           </p>
         </div>
       </div>
@@ -1548,14 +1628,65 @@ function ClassroomTools({ state, refresh }) {
 }
 export default function App() {
   const teacher = location.pathname.startsWith("/teacher"),
-    role = teacher ? "teacher" : "student",
     classroomId =
       location.pathname.match(/^\/classroom\/([^/]+)\/?$/)?.[1] || "";
+  const modeKey = `teacher-display:${classroomId}`;
+  const [presenting, setPresenting] = useState(() => {
+    try {
+      return (
+        !teacher && !!classroomId && sessionStorage.getItem(modeKey) === "1"
+      );
+    } catch {
+      return false;
+    }
+  });
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const changeMode = (value) => {
+    try {
+      if (value) sessionStorage.setItem(modeKey, "1");
+      else sessionStorage.removeItem(modeKey);
+    } catch {
+      /* A blocked storage API must not prevent classroom access. */
+    }
+    setPresenting(value);
+    setSessionVersion((version) => version + 1);
+    setLoginOpen(false);
+  };
+  return (
+    <>
+      <ClassroomApp
+        key={`${presenting}:${sessionVersion}`}
+        teacher={teacher}
+        presenting={presenting}
+        classroomId={classroomId}
+        onTeacherDisplay={() => setLoginOpen(true)}
+        onExitDisplay={() => changeMode(false)}
+      />
+      {loginOpen && (
+        <TeacherDisplayDialog
+          classroomId={classroomId}
+          onClose={() => setLoginOpen(false)}
+          onEntered={() => changeMode(true)}
+        />
+      )}
+    </>
+  );
+}
+function ClassroomApp({
+  teacher,
+  presenting,
+  classroomId,
+  onTeacherDisplay,
+  onExitDisplay,
+}) {
+  const role = teacher ? "teacher" : presenting ? "presenter" : "student";
   const { state, loading, error, ended, connection, refresh } = useClassroom(
     role,
     classroomId,
   );
   const [logoutError, setLogoutError] = useState("");
+  const [leaving, setLeaving] = useState(false);
   const logout = async () => {
     try {
       await api("/api/logout", {});
@@ -1564,18 +1695,58 @@ export default function App() {
       setLogoutError(e.message);
     }
   };
+  const exitDisplay = async () => {
+    setLeaving(true);
+    setLogoutError("");
+    try {
+      try {
+        await api("/api/display/logout", { classroomId });
+      } catch (e) {
+        if (e.status !== 401) throw e;
+      }
+      onExitDisplay();
+    } catch (e) {
+      setLogoutError(e.message);
+      setLeaving(false);
+    }
+  };
+  const teacherDisplay =
+    !teacher && classroomId ? (
+      <div className="teacher-display-actions">
+        {presenting && <span className="teacher-display-label">教师展示</span>}
+        {(!presenting || (!state && !ended)) && (
+          <button className="fullscreen-button" onClick={onTeacherDisplay}>
+            <Monitor size={17} />
+            {presenting ? "输入展示码" : "教师展示"}
+          </button>
+        )}
+        {presenting && (
+          <button
+            className="fullscreen-button"
+            onClick={exitDisplay}
+            disabled={leaving}
+          >
+            {leaving ? "正在退出…" : "退出展示"}
+          </button>
+        )}
+      </div>
+    ) : null;
   if (
     !teacher &&
-    (!state || !["discover", "design"].includes(state.room.stage))
+    (!state ||
+      !state.room.pageOpen ||
+      !["discover", "design"].includes(state.room.stage))
   )
     return (
       <StudentPresentation
         state={state}
         loading={loading}
-        error={error}
+        error={error || logoutError}
         ended={ended}
         connection={connection}
         refresh={refresh}
+        presenting={presenting}
+        teacherDisplay={teacherDisplay}
       />
     );
   return (
@@ -1585,6 +1756,7 @@ export default function App() {
         state={state}
         connection={connection}
         onLogout={logout}
+        teacherDisplay={teacherDisplay}
       />
       {loading ? (
         <main className="loading" role="status">
@@ -1639,7 +1811,11 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-                <Share room={state.room} />
+                <Share
+                  room={state.room}
+                  displayPin={state.displayPin}
+                  refresh={refresh}
+                />
               </section>
               <TeacherControls state={state} refresh={refresh} />
               <Board
@@ -1650,6 +1826,14 @@ export default function App() {
               />
               <ClassroomTools state={state} refresh={refresh} />
             </>
+          ) : presenting ? (
+            <Board
+              key={`${state.room.id}:${state.room.stage}`}
+              state={state}
+              role="presenter"
+              fixedKind={state.room.stage}
+              readOnly
+            />
           ) : (
             <StudentClassroom
               key={state.room.id}

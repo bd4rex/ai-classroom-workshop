@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, randomInt, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { openDatabase } from "./database.js";
@@ -74,6 +74,10 @@ export async function createStore(directory, options = {}) {
         Date.now(),
       );
       await setMeta("current", id);
+      await setMeta(
+        `displayPin:${id}`,
+        String(randomInt(10000)).padStart(4, "0"),
+      );
       if (settings)
         await setMeta(
           `activities:${id}`,
@@ -173,6 +177,12 @@ export async function createStore(directory, options = {}) {
         generated = created.password;
       }
       if (!(await meta("current"))) await newRoom();
+      const currentId = await meta("current");
+      if (!(await meta(`displayPin:${currentId}`)))
+        await setMeta(
+          `displayPin:${currentId}`,
+          String(randomInt(10000)).padStart(4, "0"),
+        );
       return generated;
     });
   }

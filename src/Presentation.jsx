@@ -244,7 +244,10 @@ function ResultsPanel({ state, kind, activityId = kind, role = "student" }) {
           setError("");
         }
       } catch (e) {
-        if (active) setError(e.message);
+        if (active) {
+          if ([401, 403, 404, 410].includes(e.status)) setData(null);
+          setError(e.message);
+        }
       }
     });
     refresh.current = () => queue.update();
@@ -556,6 +559,146 @@ function AnswerPanel({ state, activity, index, total, refresh }) {
   );
 }
 
+export function TeacherDisplayDialog({ classroomId, onClose, onEntered }) {
+  const dialog = useRef();
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const element = dialog.current;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  const submit = async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/display/login", { classroomId, pin });
+      const session = await api(
+        `/api/session?${new URLSearchParams({ role: "presenter", classroomId })}`,
+      );
+      if (!session.state && !session.ended)
+        throw new Error(
+          "展示码已验证，但登录会话未建立。请在独立标签页打开课堂链接；若仍失败，请联系管理人员。",
+        );
+      onEntered();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <dialog
+      ref={dialog}
+      className="teacher-display-dialog"
+      aria-labelledby="teacher-display-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <form onSubmit={submit}>
+        <div className="teacher-display-dialog-heading">
+          <h2 id="teacher-display-title">教师展示</h2>
+          <button
+            type="button"
+            aria-label="关闭教师验证"
+            onClick={onClose}
+            disabled={busy}
+          >
+            <X size={21} />
+          </button>
+        </div>
+        <p>输入管理端显示的四位展示码，即可直接查看全班结果。</p>
+        <label>
+          四位展示码
+          <input
+            type="password"
+            value={pin}
+            onChange={(event) =>
+              setPin(event.target.value.replace(/\D/g, "").slice(0, 4))
+            }
+            inputMode="numeric"
+            pattern="[0-9]{4}"
+            autoComplete="off"
+            autoFocus
+            required
+            maxLength={4}
+            disabled={busy}
+          />
+        </label>
+        {error && (
+          <p className="slide-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button
+          className="slide-submit"
+          disabled={busy || !/^\d{4}$/.test(pin)}
+        >
+          {busy ? "正在验证…" : "进入教师展示"}
+          <ArrowRight size={19} />
+        </button>
+      </form>
+    </dialog>
+  );
+}
+
+function DisplayQuestion({ activity, index, total }) {
+  const Icon = icons[activity.kind];
+  return (
+    <section
+      className="slide-answer display-question"
+      aria-labelledby="slide-question"
+    >
+      <div className="answer-kind">
+        <span>
+          <Icon size={20} />
+          {activityNames[activity.kind]}
+          {activity.kind === "choice" ? " · 单选" : ""}
+        </span>
+        <span>
+          {String(index + 1).padStart(2, "0")} /{" "}
+          {String(total).padStart(2, "0")}
+        </span>
+      </div>
+      <h1
+        id="slide-question"
+        className={activity.question.length > 38 ? "long-question" : ""}
+      >
+        {activity.question}
+      </h1>
+      {activity.kind === "wordcloud" ? (
+        <div className="display-word-prompt">
+          <Cloud size={52} />
+          <p>用 1–3 个关键词，分享你的想法。</p>
+          <span>同学提交的关键词将汇成右侧词云。</span>
+        </div>
+      ) : (
+        <ul
+          className={`display-options ${activity.kind}`}
+          aria-label="本题选项"
+        >
+          {activity.options.map((option) => (
+            <li key={option.id}>
+              {activity.kind === "choice" && (
+                <span className="answer-letter">{option.id}</span>
+              )}
+              {option.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="display-note">
+        <Monitor size={18} />
+        教师展示 · 无需作答，结果自动更新
+      </p>
+    </section>
+  );
+}
+
 export function StudentPresentation({
   state,
   loading,
@@ -563,6 +706,8 @@ export function StudentPresentation({
   ended,
   connection,
   refresh,
+  presenting = false,
+  teacherDisplay,
 }) {
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement),
     [fullscreenError, setFullscreenError] = useState("");
@@ -606,7 +751,7 @@ export function StudentPresentation({
               活动 <strong>{String(index + 1).padStart(2, "0")}</strong>
               <span>/ {String(list.length).padStart(2, "0")}</span>
               <b>{activityNames[kind]}</b>
-              {state.submissions[activity.id] && <Check size={16} />}
+              {state.submissions?.[activity.id] && <Check size={16} />}
             </span>
           ) : (
             <span>
@@ -616,32 +761,44 @@ export function StudentPresentation({
             </span>
           )}
         </div>
-        <button
-          className="fullscreen-button"
-          onClick={toggleFullscreen}
-          aria-label={fullscreen ? "退出全屏" : "进入全屏"}
-        >
-          {fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
-          {fullscreen ? "退出全屏" : "全屏展示"}
-        </button>
+        <div className="slide-header-actions">
+          {teacherDisplay}
+          <button
+            className="fullscreen-button"
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? "退出全屏" : "进入全屏"}
+          >
+            {fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
+            {fullscreen ? "退出全屏" : "全屏展示"}
+          </button>
+        </div>
       </header>
       {active ? (
         <div
           className="slide-columns"
-          key={`${room.id}:${state.me.id}:${activity.id}:${activity.revision}`}
+          key={`${room.id}:${presenting ? "teacher" : state.me.id}:${activity.id}:${activity.revision}`}
         >
-          <AnswerPanel
-            state={state}
-            activity={activity}
-            index={index}
-            total={list.length}
-            refresh={refresh}
-          />
-          {state.submissions[activity.id] ? (
+          {presenting ? (
+            <DisplayQuestion
+              activity={activity}
+              index={index}
+              total={list.length}
+            />
+          ) : (
+            <AnswerPanel
+              state={state}
+              activity={activity}
+              index={index}
+              total={list.length}
+              refresh={refresh}
+            />
+          )}
+          {presenting || state.submissions[activity.id] ? (
             <ActivityResults
               state={state}
               kind={kind}
               activityId={activity.id}
+              role={presenting ? "presenter" : "student"}
             />
           ) : (
             <LockedResults kind={kind} />
@@ -666,13 +823,17 @@ export function StudentPresentation({
                 ? "谢谢参与，下次再见"
                 : error
                   ? "暂时无法进入课堂"
-                  : "准备好，一起思考"}
+                  : presenting && !state
+                    ? "请输入四位展示码"
+                    : "准备好，一起思考"}
           </h1>
           <p>
             {error ||
               (stopped
                 ? "本节课堂已经结束，提交的答案已保存。"
-                : "请留在这里，老师开始活动后，页面会自动切换。")}
+                : presenting && !state
+                  ? "展示登录已过期或展示码已更新，请点击上方按钮输入展示码。"
+                  : "请留在这里，老师开始活动后，页面会自动切换。")}
           </p>
           {error && (
             <button className="slide-submit" onClick={refresh}>
@@ -690,7 +851,13 @@ export function StudentPresentation({
         </section>
       )}
       <footer className="slide-footer">
-        <span>{kind ? descriptions[kind] : "先独立思考，再一起交流"}</span>
+        <span>
+          {presenting
+            ? "教师展示 · 跟随课堂节奏"
+            : kind
+              ? descriptions[kind]
+              : "先独立思考，再一起交流"}
+        </span>
         <span
           className={
             error || connection === "offline" ? "connection-failed" : ""
@@ -704,7 +871,7 @@ export function StudentPresentation({
                 ? "● 页面自动跟随老师"
                 : "正在连接课堂…")}
         </span>
-        {state?.me.name && <span>{state.me.name}</span>}
+        {state?.me?.name && <span>{state.me.name}</span>}
       </footer>
     </SlideFrame>
   );

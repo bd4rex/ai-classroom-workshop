@@ -10,6 +10,18 @@ This independent simplification of [Tongpin Classroom Feedback](https://github.c
 
 ## Classroom workflow
 
+For remote lessons, the operator and teaching presenter can use separate computers:
+
+| User | Entry and action |
+| ---- | ---------------- |
+| Operator | Open `/teacher` on another computer, sign in, view the teacher display code, and control classroom pacing. Save a chosen code or click “随机换一个” to randomize it. |
+| Teaching presenter | Open the same classroom link as students, click “教师展示” (Teacher display) at the top right, and enter the four-digit display code to view results directly. |
+| Student | Open the same link and submit independently before viewing that activity's aggregates. |
+
+Teacher display keeps the 16:9 layout for the three activity types, with the question/options on the left and live class pies/clouds on the right. No school, name, or answer submission is required, and viewing adds no votes. It follows operator activity changes, preserves results during a pause, and hides charts when closed or ended. Legacy Discover/Design activities use a read-only response list.
+
+Each new classroom automatically receives a four-digit display code, including support for leading zeros such as `0012`. It grants read-only access to the classroom's current activity, without classroom management, deletion, or export permissions, and is never included in student state responses. The current tab remembers display mode across reloads. Enter the code again when the 12-hour session expires or the operator changes the code; exiting display does not affect management login. Ten consecutive incorrect attempts from one source require waiting up to two minutes, or an operator can change the code to reset the limit; this limit persists in the shared database. Codes and session credentials never enter shared URLs, and old links never switch to a new classroom.
+
 | Activity      | Student input                                       | Right panel after submission                     |
 | ------------- | --------------------------------------------------- | ------------------------------------------------ |
 | True/false    | One of correct/incorrect                            | Vote counts and proportions as a pie chart       |

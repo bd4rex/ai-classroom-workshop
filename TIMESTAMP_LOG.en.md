@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-15 · Four-digit codes and same-link teacher display
+
+- Based on main `a2bd968`, branch `codex/teacher-presentation` implements teacher aggregate viewing through the shared classroom link without submitting, preserving per-activity student gates and management pacing. Following the user's classroom workflow requirement, a separate four-digit display code can be set manually or randomized in management. Reloads retain display mode; the code grants no management permissions.
+- Updated paired documentation and validation records. SQLite: 61 passed/12 specialized skips; PostgreSQL: all 73 passed; build passed. Both storage/synchronization modes passed browser checks with operator, presenter, and student contexts, with no presenter answer submissions. Link isolation, code-change revocation, expiry, and permissions were verified.
+- This entry records local implementation and validation; a later entry will record GitHub delivery. Runtime version remains 0.7.0. No Coze release, production-data changes, or management-password changes were performed.
+
 ## 2026-10-15 14:13 · Review fixes merged into main
 
 - At the user's request, [PR #5](https://github.com/bd4rex/ai-classroom-workshop/pull/5) merged into `main` as `a07b4187e5dfc6e344556d370c930f740ee17e0a`, delivering fix commit `1915809de359d4b378cefcc5a61681b4f47337e7`. GitHub's `MERGED` state and remote main were read back, and local main was fast-forwarded. The merged source tree exactly matches the validated fix commit.
