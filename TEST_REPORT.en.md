@@ -2,6 +2,15 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-15 · Same-link teacher display and four-digit codes
+
+- Based on main `a2bd968`, the shared classroom link now offers Teacher display. The management workspace automatically generates a four-digit code and supports manual values, leading zeros, and random replacement. Separate display sessions can only read the current open activity in their classroom, without management, deletion, or export permissions. Students still submit per activity before viewing aggregates. Changing the code revokes display sessions without affecting management login.
+- Six new API regression tests cover aggregates without submission, student gates, codes absent from student state, management permissions and forged cookie roles, classroom isolation, end/pause, logout/expiry, saved/random codes, restart persistence, and failed-attempt limits retained across service restarts. Codes and sessions use existing metadata/session tables; no schema migration is introduced.
+- SQLite `npm run check`: 61 passed and 12 PostgreSQL-specific skips out of 73 tests. PostgreSQL `npm test`: all 73 passed; production build passed. A subsequent small adjustment making unauthenticated old links show an ended classroom passed all six SQLite display tests and the PostgreSQL classroom-isolation test. Dependencies are unchanged.
+- Real browsers connected separately to isolated SQLite/SSE and PostgreSQL/polling servers, with independent operator, presenter, and student contexts. Checks covered incorrect codes, manually saving `0012`, random replacement, reauthentication, unchanged links, reload persistence, all three activity types and live aggregates, per-activity student gates, pause/closure, display logout preserving management, and 1366×768, 1440×810, and 1920×1080 layouts. The presenter issued zero answer submissions; each activity contained only the student's one answer, with no page-script errors.
+- Screenshots and browser execution records remain in the local ignored `output/playwright/` directory. Validation used isolated data without production classroom, database, or deployment changes. See the [handoff log](TIMESTAMP_LOG.en.md) for GitHub delivery status.
+- Additional PostgreSQL browser checks confirmed an explicit session-creation error when cookies are blocked, read-only sharing for legacy Discover, and an ended-classroom screen after ending, creating a new classroom, and reloading the original display link.
+
 ## 2026-10-15 · Review fixes for 0.7.0
 
 - Based on GitHub main `a057f3d`. New regression cases first reproduced individual records exposed through `/api/board` after submission to each new activity type. The fix checks the resolved activity type; students receive 403 for both default and added activity IDs. Teacher details, students' own answers and aggregates, and legacy Discover/Design sharing remain available. Coverage includes search, role parameters, management filters, pause, closure, and removal receipts.

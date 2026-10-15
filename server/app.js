@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import QRCode from "qrcode";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, randomInt } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -110,6 +110,8 @@ export async function buildApp({
       "/api/teacher/submissions/moderate",
       "/api/teacher/activities/:kind",
       "/api/teacher/activities",
+      "/api/teacher/display-pin",
+      "/api/display/login",
     ].includes(route.url);
     const shared = [
       "/api/join",
@@ -187,9 +189,40 @@ export async function buildApp({
     return person;
   }
   async function audience(request) {
-    return request.query.role === "teacher"
-      ? await teacher(request)
-      : await student(request);
+    if (request.query.role === "presenter") return await presenter(request);
+    if (request.query.role !== "teacher") return await student(request);
+    const session = await teacher(request);
+    if (!(await linkedClassroom(request)))
+      throw new AppError("本节课堂已经结束，请使用新课堂链接", 410);
+    return session;
+  }
+  async function presenter(request) {
+    const id = request.query.classroomId;
+    if (typeof id !== "string" || !id || id.length > 100)
+      throw new AppError("请使用完整课堂链接", 400);
+    const value = cookieValue(request, "workshop_display");
+    const session =
+      value &&
+      (await store.get(
+        "SELECT * FROM teachers WHERE token=? AND expires>?",
+        `display:${id}:${hash(value)}`,
+        Date.now(),
+      ));
+    if (!session) throw new AppError("请输入四位展示码", 401);
+    if (!(await linkedClassroom(request)))
+      throw new AppError("本节课堂已经结束，请使用新课堂链接", 410);
+    return session;
+  }
+  // A teacher following a shared link must stay in that classroom. The
+  // management workspace omits classroomId and follows the current room.
+  async function linkedClassroom(request) {
+    const id = request.query.classroomId;
+    if (id === undefined) return true;
+    const room =
+      typeof id === "string" && id.length <= 100 ? await store.room(id) : null;
+    if (!room)
+      throw new AppError("当前网站找不到这节课堂，请使用完整课堂链接", 404);
+    return room.id === (await store.meta("current"));
   }
   async function activity(id) {
     const found = (await store.activities()).find((item) => item.id === id);
@@ -239,7 +272,7 @@ export async function buildApp({
       ]),
     );
   }
-  async function state(person) {
+  async function state(person, presenting = false) {
     return {
       room: await store.room(),
       counts: await store.counts(),
@@ -252,22 +285,27 @@ export async function buildApp({
             me: { id: person.id, name: person.name, school: person.school },
             submissions: await own(person),
           }
-        : {
-            activityLocks: Object.fromEntries(
-              (
+        : presenting
+          ? {}
+          : {
+              displayPin: await store.meta(
+                `displayPin:${await store.meta("current")}`,
+              ),
+              activityLocks: Object.fromEntries(
+                (
+                  await store.all(
+                    "SELECT activity_id,COUNT(*) n FROM submissions WHERE room_id=? GROUP BY activity_id",
+                    await store.meta("current"),
+                  )
+                ).map((row) => [row.activity_id, row.n > 0]),
+              ),
+              submissionSchools: (
                 await store.all(
-                  "SELECT activity_id,COUNT(*) n FROM submissions WHERE room_id=? GROUP BY activity_id",
+                  "SELECT DISTINCT p.school FROM participants p JOIN submissions s ON s.participant_id=p.id WHERE s.room_id=? ORDER BY p.school",
                   await store.meta("current"),
                 )
-              ).map((row) => [row.activity_id, row.n > 0]),
-            ),
-            submissionSchools: (
-              await store.all(
-                "SELECT DISTINCT p.school FROM participants p JOIN submissions s ON s.participant_id=p.id WHERE s.room_id=? ORDER BY p.school",
-                await store.meta("current"),
-              )
-            ).map((row) => row.school),
-          }),
+              ).map((row) => row.school),
+            }),
     };
   }
   app.setErrorHandler((error, request, reply) => {
@@ -336,13 +374,22 @@ export async function buildApp({
   }
   app.get("/api/session", async (request, reply) => {
     try {
+      if (request.query.role === "presenter") {
+        if (!(await linkedClassroom(request)))
+          return { state: null, ended: true };
+        await presenter(request);
+        return { state: await state(null, true) };
+      }
       if (request.query.role === "teacher") {
         await teacher(request);
+        if (!(await linkedClassroom(request)))
+          return { state: null, ended: true };
         return { state: await state() };
       }
       return { state: await studentState(request, reply) };
     } catch (error) {
       if (error.statusCode === 401) return { state: null };
+      if (error.statusCode === 410) return { state: null, ended: true };
       throw error;
     }
   });
@@ -374,6 +421,78 @@ export async function buildApp({
     for (const client of clients)
       if (client.teacherToken === session.token) client.res.end();
     setCookie(reply, "workshop_teacher", "", 0);
+    return { ok: true };
+  });
+  app.post("/api/teacher/display-pin", async (request) => {
+    await teacher(request);
+    const room = await store.room();
+    if (request.body?.roomId !== room.id)
+      throw new AppError("课堂已变化，请刷新后重试", 409);
+    const previous = await store.meta(`displayPin:${room.id}`);
+    let pin = request.body.pin;
+    if (request.body.random === true) {
+      do {
+        pin = String(randomInt(10000)).padStart(4, "0");
+      } while (pin === previous);
+    }
+    if (typeof pin !== "string" || !/^\d{4}$/.test(pin))
+      throw new AppError("展示码需要四位数字");
+    if (pin !== previous) {
+      await store.setMeta(`displayPin:${room.id}`, pin);
+      await store.run(
+        "DELETE FROM teachers WHERE token LIKE ?",
+        `display:${room.id}:%`,
+      );
+      await store.run(
+        "DELETE FROM meta WHERE key LIKE ?",
+        `displayAttempts:${room.id}:%`,
+      );
+      broadcast();
+    }
+    return { pin };
+  });
+  app.post("/api/display/login", async (request, reply) => {
+    limit(`display-login:${request.ip}`, 30, 120000);
+    const { classroomId, pin } = request.body ?? {};
+    if (typeof pin !== "string" || !/^\d{4}$/.test(pin))
+      throw new AppError("请输入四位数字展示码");
+    if (!(await linkedClassroom({ query: { classroomId: classroomId ?? "" } })))
+      throw new AppError("本节课堂已经结束，请使用新课堂链接", 410);
+    // Persist failed attempts so multiple server instances share the limit.
+    const attemptKey = `displayAttempts:${classroomId}:${hash(request.ip)}`;
+    let attempts = await store.meta(attemptKey);
+    if (!attempts || attempts.until <= Date.now())
+      attempts = { count: 0, until: Date.now() + 120000 };
+    if (attempts.count >= 10)
+      throw new AppError("展示码尝试过多，请稍后再试", 429);
+    if (pin !== (await store.meta(`displayPin:${classroomId}`))) {
+      await store.setMeta(attemptKey, {
+        ...attempts,
+        count: attempts.count + 1,
+      });
+      // Return rather than throw, so the transaction commits the failed attempt.
+      return reply.code(401).send({ error: "展示码不正确" });
+    }
+    await store.run("DELETE FROM meta WHERE key=?", attemptKey);
+    const value = token();
+    // Separate cookie and token namespace: a display code cannot grant admin access.
+    await store.run(
+      "INSERT INTO teachers VALUES (?,?)",
+      `display:${classroomId}:${hash(value)}`,
+      Date.now() + 43200000,
+    );
+    setCookie(reply, "workshop_display", value, 43200);
+    return { ok: true };
+  });
+  app.post("/api/display/logout", async (request, reply) => {
+    const value = cookieValue(request, "workshop_display");
+    if (value) {
+      const key = `display:${request.body?.classroomId}:${hash(value)}`;
+      await store.run("DELETE FROM teachers WHERE token=?", key);
+      for (const client of clients)
+        if (client.teacherToken === key) client.res.end();
+    }
+    setCookie(reply, "workshop_display", "", 0);
     return { ok: true };
   });
   app.get("/api/teacher/state", async (request) => {
@@ -715,6 +834,7 @@ export async function buildApp({
       if (!current.pageOpen || current.stage !== kind)
         throw new AppError("请跟随老师查看当前主题", 403);
       if (
+        request.query.role !== "presenter" &&
         !(await store.get(
           "SELECT id FROM submissions WHERE participant_id=? AND activity_id=?",
           actor.id,
@@ -769,6 +889,7 @@ export async function buildApp({
       if (!current.pageOpen || current.stage !== kind)
         throw new AppError("请跟随老师查看当前活动", 403);
       if (
+        request.query.role !== "presenter" &&
         !(await store.get(
           "SELECT id FROM submissions WHERE participant_id=? AND activity_id=?",
           actor.id,
@@ -889,7 +1010,7 @@ export async function buildApp({
   });
   app.get("/api/events", async (request, reply) => {
     const actor = await audience(request),
-      isTeacher = request.query.role === "teacher";
+      isTeacher = ["teacher", "presenter"].includes(request.query.role);
     if (syncMode !== "sse") throw new AppError("本课堂使用定时同步", 404);
     if (clients.size >= 5000)
       throw new AppError("实时连接繁忙，请稍后重试", 503);

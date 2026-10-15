@@ -134,6 +134,599 @@ async function fixture(t, options = {}) {
   };
 }
 
+async function displaySession(f, pin) {
+  const classroomId = (await f.app.store.room()).id;
+  pin ??= (
+    await request(
+      f.app,
+      "GET",
+      "/api/session?role=teacher",
+      undefined,
+      f.teacher,
+    )
+  ).json().state.displayPin;
+  const result = await request(f.app, "POST", "/api/display/login", {
+    classroomId,
+    pin,
+  });
+  assert.equal(result.statusCode, 200, result.body);
+  return cookie(result);
+}
+
+test("同一课堂链接的教师展示免提交，学生仍需逐题提交", async (t) => {
+  const f = await fixture(t),
+    s = await f.student();
+  const classroomId = (await f.app.store.room()).id;
+  const scoped = `role=presenter&classroomId=${classroomId}`;
+  const presenter = await displaySession(f);
+  for (const kind of ["judge", "choice", "wordcloud"]) {
+    await f.start(kind);
+    const url = `/api/results?kind=${kind}&${scoped}`;
+    assert.equal(
+      (await request(f.app, "GET", url, undefined, s)).statusCode,
+      401,
+    );
+    assert.equal(
+      (
+        await request(
+          f.app,
+          "GET",
+          `/api/results?kind=${kind}&classroomId=${classroomId}`,
+          undefined,
+          s,
+        )
+      ).statusCode,
+      403,
+    );
+    let result = await request(f.app, "GET", url, undefined, presenter);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json().total, 0);
+    const submitted = await f.submit(s, kind, {
+      ...profile(),
+      activityRevision: 1,
+      ...(kind === "wordcloud"
+        ? { words: "智能、未来" }
+        : { answer: kind === "judge" ? "true" : "A" }),
+    });
+    assert.equal(submitted.statusCode, 200, submitted.body);
+    result = await request(f.app, "GET", url, undefined, presenter);
+    assert.equal(result.json().total, 1);
+    const session = (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).json().state;
+    assert.equal(session.room.stage, kind);
+    assert.equal(session.me, undefined);
+    assert.equal(session.submissions, undefined);
+    assert.equal(session.displayPin, undefined);
+    assert.equal(session.activityLocks, undefined);
+    assert.equal(session.counts.joined, 1);
+    assert.equal(session.counts[kind], 1);
+  }
+  assert.equal(
+    (await f.app.store.get("SELECT COUNT(*) n FROM submissions")).n,
+    3,
+  );
+});
+
+test("教师展示绑定分享链接，未知及旧课堂不显示新课堂", async (t) => {
+  const f = await fixture(t);
+  const classroomId = (await f.app.store.room()).id;
+  const presenter = await displaySession(f);
+  assert.equal(
+    (
+      await request(f.app, "POST", "/api/display/login", {
+        classroomId: "missing",
+        pin: "0000",
+      })
+    ).statusCode,
+    404,
+  );
+  for (const url of [
+    "/api/session",
+    "/api/results?kind=judge",
+    "/api/board?kind=discover",
+    "/api/events",
+  ]) {
+    const query = `${url}${url.includes("?") ? "&" : "?"}role=teacher&classroomId=missing`;
+    assert.equal(
+      (await request(f.app, "GET", query, undefined, f.teacher)).statusCode,
+      404,
+    );
+  }
+  const replaced = await request(
+    f.app,
+    "POST",
+    "/api/teacher/new-room",
+    { classroomId, roomId: classroomId },
+    f.teacher,
+  );
+  assert.equal(replaced.statusCode, 200, replaced.body);
+  const scoped = `role=teacher&classroomId=${classroomId}`;
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=presenter&classroomId=${classroomId}`,
+      )
+    ).json(),
+    { state: null, ended: true },
+  );
+  const old = await request(
+    f.app,
+    "GET",
+    `/api/session?${scoped}`,
+    undefined,
+    f.teacher,
+  );
+  assert.deepEqual(old.json(), { state: null, ended: true });
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=presenter&classroomId=${classroomId}`,
+        undefined,
+        presenter,
+      )
+    ).json(),
+    { state: null, ended: true },
+  );
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=presenter&classroomId=${replaced.json().room.id}`,
+        undefined,
+        presenter,
+      )
+    ).json(),
+    { state: null },
+  );
+  for (const url of [
+    "/api/results?kind=judge",
+    "/api/board?kind=discover",
+    "/api/events?",
+  ]) {
+    assert.equal(
+      (await request(f.app, "GET", `${url}&${scoped}`, undefined, f.teacher))
+        .statusCode,
+      410,
+    );
+    assert.equal(
+      (
+        await request(
+          f.app,
+          "GET",
+          `${url}&role=presenter&classroomId=${classroomId}`,
+          undefined,
+          presenter,
+        )
+      ).statusCode,
+      410,
+    );
+  }
+  const current = await request(
+    f.app,
+    "GET",
+    "/api/session?role=teacher",
+    undefined,
+    f.teacher,
+  );
+  assert.equal(current.json().state.room.id, replaced.json().room.id);
+  assert.notEqual(current.json().state.room.id, classroomId);
+});
+
+test("展示教师退出和登录过期不影响另一台管理电脑", async (t) => {
+  const f = await fixture(t);
+  const classroomId = (await f.app.store.room()).id;
+  const presenter = await displaySession(f);
+  const scoped = `role=presenter&classroomId=${classroomId}`;
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "POST",
+        "/api/display/logout",
+        { classroomId },
+        presenter,
+      )
+    ).statusCode,
+    200,
+  );
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).json(),
+    { state: null },
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=judge&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        "/api/session?role=teacher",
+        undefined,
+        f.teacher,
+      )
+    ).json().state.room.id,
+    classroomId,
+  );
+  const expiring = await displaySession(f);
+  await f.app.store.run(
+    "UPDATE teachers SET expires=? WHERE token=?",
+    Date.now() - 1,
+    `display:${classroomId}:${hash(expiring.split("=")[1])}`,
+  );
+  assert.deepEqual(
+    (
+      await request(f.app, "GET", `/api/session?${scoped}`, undefined, expiring)
+    ).json(),
+    { state: null },
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=judge&${scoped}`,
+        undefined,
+        expiring,
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        "/api/session?role=teacher",
+        undefined,
+        f.teacher,
+      )
+    ).statusCode,
+    200,
+  );
+});
+
+test("后台设置和随机四位展示码，改码撤销展示会话且不会泄露给学生", async (t) => {
+  const f = await fixture(t),
+    s = await f.student();
+  const roomId = (await f.app.store.room()).id;
+  const before = (
+    await request(
+      f.app,
+      "GET",
+      "/api/session?role=teacher",
+      undefined,
+      f.teacher,
+    )
+  ).json().state;
+  assert.match(before.displayPin, /^\d{4}$/);
+  const presenter = await displaySession(f);
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=student&classroomId=${roomId}`,
+        undefined,
+        s,
+      )
+    ).json().state.displayPin,
+    undefined,
+  );
+  for (const session of [undefined, s, presenter])
+    assert.equal(
+      (
+        await request(
+          f.app,
+          "POST",
+          "/api/teacher/display-pin",
+          { roomId, pin: "0012" },
+          session,
+        )
+      ).statusCode,
+      401,
+    );
+  for (const pin of [1234, "123", "12345", "abcd"])
+    assert.equal(
+      (
+        await request(
+          f.app,
+          "POST",
+          "/api/teacher/display-pin",
+          { roomId, pin },
+          f.teacher,
+        )
+      ).statusCode,
+      400,
+    );
+  const pin = before.displayPin === "0012" ? "0034" : "0012";
+  const saved = await request(
+    f.app,
+    "POST",
+    "/api/teacher/display-pin",
+    { roomId, pin },
+    f.teacher,
+  );
+  assert.deepEqual(saved.json(), { pin });
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=presenter&classroomId=${roomId}`,
+        undefined,
+        presenter,
+      )
+    ).json(),
+    { state: null },
+  );
+  assert.equal(
+    (
+      await request(f.app, "POST", "/api/display/login", {
+        classroomId: roomId,
+        pin: before.displayPin,
+      })
+    ).statusCode,
+    401,
+  );
+  const renewed = await displaySession(f, pin);
+  await f.restart();
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        "/api/session?role=teacher",
+        undefined,
+        f.teacher,
+      )
+    ).json().state.displayPin,
+    pin,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/session?role=presenter&classroomId=${roomId}`,
+        undefined,
+        renewed,
+      )
+    ).json().state.room.id,
+    roomId,
+  );
+  const random = await request(
+    f.app,
+    "POST",
+    "/api/teacher/display-pin",
+    { roomId, random: true },
+    f.teacher,
+  );
+  assert.match(random.json().pin, /^\d{4}$/);
+  assert.notEqual(random.json().pin, pin);
+  assert.equal(
+    (await displaySession(f, random.json().pin)).startsWith(
+      "workshop_display=",
+    ),
+    true,
+  );
+});
+
+test("展示码不能获得管理权限，只能读取当前开放活动", async (t) => {
+  const f = await fixture(t),
+    presenter = await displaySession(f);
+  const classroomId = (await f.app.store.room()).id;
+  const scoped = `role=presenter&classroomId=${classroomId}`;
+  for (const url of [
+    "/api/teacher/state",
+    "/api/teacher/share",
+    "/api/teacher/export",
+    "/api/results?role=teacher&kind=judge",
+  ])
+    assert.equal(
+      (await request(f.app, "GET", url, undefined, presenter)).statusCode,
+      401,
+    );
+  const forged = presenter.replace("workshop_display=", "workshop_teacher=");
+  assert.deepEqual(
+    (
+      await request(
+        f.app,
+        "GET",
+        "/api/session?role=teacher",
+        undefined,
+        forged,
+      )
+    ).json(),
+    { state: null },
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "POST",
+        "/api/teacher/new-room",
+        { roomId: classroomId },
+        presenter,
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "POST",
+        "/api/teacher/control",
+        { roomId: classroomId },
+        presenter,
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=judge&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    403,
+  );
+  await f.start("judge");
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=judge&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=choice&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/board?kind=judge&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    403,
+  );
+  await f.control({ action: "pause", paused: true });
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/results?kind=judge&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    200,
+  );
+  await f.start("discover");
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/board?kind=discover&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    200,
+  );
+  await f.control({ action: "end" });
+  assert.equal(
+    (
+      await request(
+        f.app,
+        "GET",
+        `/api/board?kind=discover&${scoped}`,
+        undefined,
+        presenter,
+      )
+    ).statusCode,
+    403,
+  );
+});
+
+test("四位展示码错误尝试跨服务重启限速，更换后可以重新验证", async (t) => {
+  const f = await fixture(t);
+  const roomId = (await f.app.store.room()).id;
+  const pin = (
+    await request(
+      f.app,
+      "GET",
+      "/api/session?role=teacher",
+      undefined,
+      f.teacher,
+    )
+  ).json().state.displayPin;
+  const wrong = pin === "0000" ? "1111" : "0000";
+  for (let index = 0; index < 10; index++) {
+    if (index === 5) await f.restart();
+    assert.equal(
+      (
+        await request(f.app, "POST", "/api/display/login", {
+          classroomId: roomId,
+          pin: wrong,
+        })
+      ).statusCode,
+      401,
+    );
+  }
+  assert.equal(
+    (
+      await request(f.app, "POST", "/api/display/login", {
+        classroomId: roomId,
+        pin,
+      })
+    ).statusCode,
+    429,
+  );
+  await request(
+    f.app,
+    "POST",
+    "/api/teacher/display-pin",
+    { roomId, pin: wrong },
+    f.teacher,
+  );
+  await displaySession(f, wrong);
+});
+
 test("教师鉴权、固定课堂链接、学生隔离和同源写入", async (t) => {
   const f = await fixture(t),
     s = await f.student();
