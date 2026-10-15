@@ -6,7 +6,11 @@ process.umask(0o077);
 const store = await createStore(
   process.env.DATA_DIR || fileURLToPath(new URL("../data", import.meta.url)),
   {
-    usePostgres: Boolean(process.env.PGHOST && process.env.PGDATABASE),
+    usePostgres: Boolean(
+      process.env.DATABASE_URL ||
+        process.env.PGDATABASE_URL ||
+        (process.env.PGHOST && process.env.PGDATABASE),
+    ),
     connectionString: process.env.DATABASE_URL || process.env.PGDATABASE_URL,
     schema: process.env.DATABASE_SCHEMA,
   },

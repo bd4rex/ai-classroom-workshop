@@ -101,7 +101,11 @@ if (
           {
             connectionString:
               process.env.DATABASE_URL || process.env.PGDATABASE_URL,
-            usePostgres: Boolean(process.env.PGHOST && process.env.PGDATABASE),
+            usePostgres: Boolean(
+              process.env.DATABASE_URL ||
+                process.env.PGDATABASE_URL ||
+                (process.env.PGHOST && process.env.PGDATABASE),
+            ),
             schema: process.env.DATABASE_SCHEMA,
           },
           process.argv.includes("--apply"),

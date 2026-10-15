@@ -51,6 +51,8 @@ npm start
 
 This prints a new random password and invalidates existing teacher sessions without changing student work. Use `npm run dev` for development.
 
+Password reset and `npm run database:migrate` use the same database configuration as the server: `DATABASE_URL`/`PGDATABASE_URL` take precedence; otherwise `PGHOST` plus `PGDATABASE` selects PostgreSQL. `DATABASE_SCHEMA` selects the target schema. Use the target service's same `.env` file. Without PostgreSQL configuration, password reset continues to use SQLite under `DATA_DIR`.
+
 ## School dropdown
 
 `config/schools.json` contains the following six schools, preserving the names and order provided by the user. To update the dropdown later, edit this array and restart the service:

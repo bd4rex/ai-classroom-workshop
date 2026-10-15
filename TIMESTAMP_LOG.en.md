@@ -2,6 +2,13 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-15 · Review fixes and dependency updates for 0.7.0
+
+- Based on remote main `a057f3d`, branch `codex/review-fixes-v070` fixes student access to individual records. `/api/board` checks the actual activity type and permits student sharing only for legacy Discover/Design; the three new types expose only the student's own answers and class aggregates. Teacher details and existing classroom-state rules remain available.
+- Fixed password-reset and SQLite-to-PostgreSQL migration CLIs choosing SQLite when only `DATABASE_URL`/`PGDATABASE_URL` is configured, with real subprocess regression coverage. Updated affected runtime/build dependencies and documented target database configuration in both READMEs.
+- SQLite: 55 passed/12 specialized skips. PostgreSQL: all 67 passed. Syntax, build, and local HTTP/static-resource checks passed; production and full dependency audits report zero advisories. Regression coverage includes failing-before/passing-after reproduction, teacher-session invalidation, preserved migration records, and overwrite refusal. See the [validation record](TEST_REPORT.en.md).
+- This phase completed local changes and validation before any GitHub push; see the subsequent merge record for delivery status. No Coze release or production database operation was performed. The runtime version remains 0.7.0.
+
 ## 2026-10-13 14:48 · Production sites compared with GitHub source
 
 - Baseline main `a8a439f` / 0.7.0. All 21 scoped core files, including every backend file, in project 2's deployed `7ce857c` match main. Production JS/CSS exactly match the fresh build from this inspection.

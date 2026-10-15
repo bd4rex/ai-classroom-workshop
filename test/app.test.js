@@ -1389,6 +1389,73 @@ test("旧版已经发出的链接自动跳到原课堂，新课堂和重启不�
   );
 });
 
+for (const kind of ["judge", "choice", "wordcloud"])
+  test(`${kind} 默认及新增活动只向学生开放聚合，明细始终需要教师身份`, async (t) => {
+    const f = await fixture(t),
+      a = await f.student(),
+      b = await f.student();
+    const ids = [kind, await addActivity(f, kind)];
+    await f.control({ action: "page", open: true });
+    for (const id of ids) {
+      await f.control({ action: "stage", stage: id });
+      assert.equal((await f.board(a, id)).statusCode, 403);
+      assert.equal((await resultsFor(f, id, a)).statusCode, 403);
+      for (const [session, name, value] of [
+        [a, "测试甲", kind === "judge" ? "true" : "A"],
+        [b, "测试乙", kind === "judge" ? "false" : "B"],
+      ]) {
+        const response = await f.submit(session, id, {
+          ...profile(name),
+          activityRevision: 1,
+          ...(kind === "wordcloud"
+            ? { words: "创造,未来" }
+            : { answer: value }),
+        });
+        assert.equal(response.statusCode, 200, response.body);
+      }
+      for (const query of [
+        "",
+        "&role=student",
+        "&role=unexpected",
+        "&q=测试乙&page=1",
+        "&status=removed",
+        `&school=${encodeURIComponent(school)}`,
+      ])
+        assert.equal((await f.board(a, id, query)).statusCode, 403);
+      assert.equal((await f.board(a, id, "&role=teacher")).statusCode, 401);
+      assert.equal((await resultsFor(f, id, a)).json().total, 2);
+      const state = (
+        await request(f.app, "GET", "/api/student/state", undefined, a)
+      ).json();
+      assert.ok(state.submissions[id]);
+      assert.ok(!JSON.stringify(state).includes("测试乙"));
+      const detail = await f.board(f.teacher, id, "&role=teacher");
+      assert.equal(detail.statusCode, 200);
+      assert.deepEqual(
+        detail
+          .json()
+          .rows.map((row) => row.name)
+          .sort(),
+        ["测试乙", "测试甲"].sort(),
+      );
+      const ownRow = detail.json().rows.find((row) => row.name === "测试甲");
+      assert.equal((await f.moderate([ownRow.id])).statusCode, 200);
+      assert.equal((await f.board(a, id)).statusCode, 403);
+      assert.equal((await resultsFor(f, id, a)).json().total, 1);
+      await f.control({ action: "pause", paused: true });
+      assert.equal((await f.board(b, id)).statusCode, 403);
+      assert.equal((await resultsFor(f, id, b)).json().total, 1);
+      await f.control({ action: "page", open: false });
+      assert.equal((await f.board(b, id)).statusCode, 403);
+      assert.equal((await resultsFor(f, id, b)).statusCode, 403);
+      assert.equal(
+        (await f.board(f.teacher, id, "&role=teacher")).json().total,
+        1,
+      );
+      await f.control({ action: "page", open: true });
+    }
+  });
+
 test("三种活动在各自提交后才可读取全班统计，切换、暂停和关闭继续由老师控制", async (t) => {
   const f = await fixture(t),
     a = await f.student(),
@@ -1882,7 +1949,11 @@ test("同类型活动的配置、回执、阅读门槛、计数和 CSV 分别隔
     );
     assert.equal((await f.submit(student, id, answer)).json().repeated, true);
     assert.equal((await resultsFor(f, id, student)).json().total, 1);
-    assert.equal((await f.board(student, id)).json().rows.length, 1);
+    assert.equal((await f.board(student, id)).statusCode, 403);
+    assert.equal(
+      (await f.board(f.teacher, id, "&role=teacher")).json().rows.length,
+      1,
+    );
   }
   assert.equal((await resultsFor(f, "judge", student)).statusCode, 403);
   const state = (

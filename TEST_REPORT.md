@@ -2,6 +2,15 @@
 
 [English](TEST_REPORT.en.md) · [返回说明](README.md)
 
+## 2026-10-15 · 0.7.0 审查问题修复
+
+- 基于 GitHub main `a057f3d`。新增回归先复现三类新活动在提交后经 `/api/board` 返回明细的缺陷；修复后按解析出的活动类型限制学生访问，默认 ID 和新增 ID 均返回 403。教师明细、学生本人答案与汇总、旧发现／设计分享保持可用；覆盖搜索、角色参数、管理筛选、暂停、关闭和移除回执。
+- 新增实际 CLI 子进程检查：仅 `DATABASE_URL`、仅 `PGDATABASE_URL` 及标准 `PG*` 配置都正确操作 PostgreSQL。密码重置使旧密码和旧教师会话失效、新密码有效，课堂和提交不变；迁移保留所有记录、密码和会话，源 SQLite 文件不变，重复导入拒绝覆盖。未配置 PostgreSQL 时的 SQLite 密码重置也通过。
+- 独立复查发现新增测试转换 `PG*` 配置时遗漏 TLS 选项，已保留 URL 的 `sslmode` 或环境中的 `PGSSLMODE`。在仅接受 TLS 的隔离 PostgreSQL 上先复现两项失败，修复后 URL 查询参数和环境变量两种 TLS 配置的维护测试各 7 项全通过；没有改变产品代码的 TLS 校验策略。
+- 在本地隔离副本、临时数据目录和专用 PostgreSQL 中验证。SQLite `npm run check`：67 项中 55 项通过、12 项 PostgreSQL 专项跳过；PostgreSQL `npm test` 在普通连接和仅接受 TLS 的环境各 67 项全部通过。新增脚本语法检查及生产构建通过；实际 HTTP 启动检查的 health、教师页面和两个构建资源均为 200。
+- 更新 Fastify 至 5.12.7、brace-expansion 至 5.0.12、fast-uri 至 4.2.2／3.1.8、开发依赖 source-map-js 至 1.2.2。`npm audit --omit=dev` 和完整 `npm audit` 均为 0 告警；没有跨主版本升级。
+- 修复从分支 `codex/review-fixes-v070` 交付，运行版本号仍为 0.7.0；GitHub 合并状态见[交接日志](TIMESTAMP_LOG.md)。上述结果为本地修复验证，未发布扣子或修改生产数据库，不代表生产已更新。
+
 ## 2026-10-13 14:13 · 扣子两个正式站点发布后验收
 
 - 用户豁免备份后，两生产库事务预迁移完成：提交总数／已回填／可见数分别为“网站 2”1 / 1 / 0、原项目 16 / 16 / 14；没有删除或导入开发数据。

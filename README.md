@@ -51,6 +51,8 @@ npm start
 
 该命令打印新随机密码，并注销现有教师登录，不修改学生作品。开发模式使用 `npm run dev`。
 
+密码重置和 `npm run database:migrate` 与服务端使用相同数据库配置：优先使用 `DATABASE_URL`／`PGDATABASE_URL`，否则由 `PGHOST`＋`PGDATABASE` 启用 PostgreSQL；`DATABASE_SCHEMA` 选择目标 schema。请使用目标服务的同一份 `.env`。没有 PostgreSQL 配置时，密码重置继续使用 `DATA_DIR` 下的 SQLite。
+
 ## 学校下拉名单
 
 `config/schools.json` 已按用户提供的名称及顺序配置以下 6 所学校。后续修改此数组并重启服务即可更新下拉选项：
