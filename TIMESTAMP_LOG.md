@@ -2,6 +2,11 @@
 
 [English](TIMESTAMP_LOG.en.md) · [返回说明](README.md)
 
+## 2026-10-15 23:36 · 教师展示合并 main
+
+- [PR #6](https://github.com/bd4rex/ai-classroom-workshop/pull/6) 已合并到 `main`，合并提交 `f50bb48ac97d61ce6f44b108fe9901a3d1d9f0dc`，功能提交 `83f8789e8f742954e441499db58ec64ff4121e56`。已回读 GitHub `MERGED` 状态、远端 main，并将本地 main 快进同步；合并源码与已验证功能提交一致。
+- 四位展示码、只读教师展示及中英文记录已交付。测试结果见下方记录；仓库未配置 GitHub Actions。本条作为后续文档提交写入 main；隔离验证服务已停止，未发布扣子或修改生产数据，运行版本仍为 0.7.0。
+
 ## 2026-10-15 · 四位展示码与同链接教师展示
 
 - 基于 main `a2bd968`，在 `codex/teacher-presentation` 实现教师通过相同课堂链接免提交展示汇总，保留学生逐题作答门槛和管理端节奏控制。根据用户课堂操作要求，使用独立四位展示码，后台可手动设置或随机更换，刷新保持展示身份；展示码不授予后台管理权限。
