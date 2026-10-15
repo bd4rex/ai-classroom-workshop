@@ -2,6 +2,12 @@
 
 [中文](TIMESTAMP_LOG.md) · [Back to README](README.en.md)
 
+## 2026-10-15 14:13 · Review fixes merged into main
+
+- At the user's request, [PR #5](https://github.com/bd4rex/ai-classroom-workshop/pull/5) merged into `main` as `a07b4187e5dfc6e344556d370c930f740ee17e0a`, delivering fix commit `1915809de359d4b378cefcc5a61681b4f47337e7`. GitHub's `MERGED` state and remote main were read back, and local main was fast-forwarded. The merged source tree exactly matches the validated fix commit.
+- Includes student-detail authorization, PostgreSQL maintenance scripts, dependency updates, and paired documentation. Before merging, code and tests were compared file by file with the validated copy. Existing results remain applicable: SQLite 55 passed/12 specialized skips, PostgreSQL ordinary and TLS environments each 67 passed, successful build, and zero audit advisories. The repository has no GitHub Actions workflows; this turn changed only delivery documentation and did not repeat passing tests.
+- This entry is a follow-up documentation commit on main. This delivery only updates GitHub; no Coze deployment or production database, password, or classroom-state operation was performed. The runtime version remains 0.7.0.
+
 ## 2026-10-15 · Review fixes and dependency updates for 0.7.0
 
 - Based on remote main `a057f3d`, branch `codex/review-fixes-v070` fixes student access to individual records. `/api/board` checks the actual activity type and permits student sharing only for legacy Discover/Design; the three new types expose only the student's own answers and class aggregates. Teacher details and existing classroom-state rules remain available.

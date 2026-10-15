@@ -2,6 +2,12 @@
 
 [English](TIMESTAMP_LOG.en.md) · [返回说明](README.md)
 
+## 2026-10-15 14:13 · 审查修复合并 main
+
+- 按用户要求，[PR #5](https://github.com/bd4rex/ai-classroom-workshop/pull/5) 已合并到 `main`，合并提交 `a07b4187e5dfc6e344556d370c930f740ee17e0a`，修复提交 `1915809de359d4b378cefcc5a61681b4f47337e7`。已回读 GitHub `MERGED` 状态与远端 main，并将本地 main 快进同步；合并后的源码树与已验证修复提交完全一致。
+- 包含学生明细权限、PostgreSQL 运维脚本、依赖更新及中英文说明。合并前逐文件核对代码和测试与验证副本一致；沿用 SQLite 55 通过／12 专项跳过、PostgreSQL 普通与 TLS 环境各 67 全通过、构建和 0 告警审计结果。仓库未配置 GitHub Actions；本轮只调整交付文档，不重复执行已通过的测试。
+- 本条作为后续文档提交写入 main。本次仅更新 GitHub，未执行扣子部署，也未修改正式数据库、密码或课堂状态；运行版本号仍为 0.7.0。
+
 ## 2026-10-15 · 0.7.0 审查问题修复与依赖更新
 
 - 基于远端 main `a057f3d`，在 `codex/review-fixes-v070` 修复学生明细越权：`/api/board` 按实际活动类型仅向学生开放旧发现／设计分享，新三类活动只允许读取本人答案与全班汇总；保留教师明细和原有课堂状态规则。
