@@ -707,8 +707,10 @@ export async function buildApp({
     const actor = await audience(request);
     const isTeacher = request.query.role === "teacher";
     const kind = request.query.kind;
-    await activity(kind);
+    const selected = await activity(kind);
     if (!isTeacher) {
+      if (!["discover", "design"].includes(selected.kind))
+        throw new AppError("本活动仅向学生开放全班统计", 403);
       const current = await store.room();
       if (!current.pageOpen || current.stage !== kind)
         throw new AppError("请跟随老师查看当前主题", 403);

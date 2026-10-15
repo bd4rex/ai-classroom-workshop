@@ -2,6 +2,15 @@
 
 [中文](TEST_REPORT.md) · [README](README.en.md)
 
+## 2026-10-15 · Review fixes for 0.7.0
+
+- Based on GitHub main `a057f3d`. New regression cases first reproduced individual records exposed through `/api/board` after submission to each new activity type. The fix checks the resolved activity type; students receive 403 for both default and added activity IDs. Teacher details, students' own answers and aggregates, and legacy Discover/Design sharing remain available. Coverage includes search, role parameters, management filters, pause, closure, and removal receipts.
+- New real CLI subprocess tests cover PostgreSQL configured only through `DATABASE_URL`, only through `PGDATABASE_URL`, and through standard `PG*` variables. Password reset invalidates the old password and teacher sessions, accepts the new password, and preserves classroom records and responses. Migration preserves every record, password, and session, leaves the source SQLite file unchanged, and refuses repeated imports into a populated target. SQLite password reset without PostgreSQL configuration also passes.
+- Independent review found that the new test's `PG*` conversion omitted TLS settings. It now preserves the URL's `sslmode` or the environment's `PGSSLMODE`. A TLS-only isolated PostgreSQL instance reproduced two failures before this correction; afterward, all seven maintenance tests passed both with URL-query TLS configuration and with environment-based TLS configuration. Product TLS verification policy was not changed.
+- Validation used a disposable local source copy, temporary data directories, and a dedicated PostgreSQL instance. SQLite `npm run check`: 55 of 67 passed, with 12 PostgreSQL-specific skips. PostgreSQL `npm test`: all 67 passed both with ordinary connections and in a TLS-only environment. Additional script syntax checks and the production build passed. A real HTTP startup check returned 200 for health, the teacher page, and both built assets.
+- Updated Fastify to 5.12.7, brace-expansion to 5.0.12, fast-uri to 4.2.2/3.1.8, and development dependency source-map-js to 1.2.2. Both `npm audit --omit=dev` and full `npm audit` report zero advisories. No major-version upgrades were introduced.
+- Fixes are delivered from branch `codex/review-fixes-v070`; the runtime version remains 0.7.0. See the [handoff log](TIMESTAMP_LOG.en.md) for GitHub merge status. These results establish local validation; no Coze release or production database changes were performed, and production has not been updated by this validation.
+
 ## 2026-10-13 14:13 · Acceptance after both production Coze releases
 
 - After the user's backup waiver, transactional pre-migration completed in both production databases. Total / populated / visible counts were 1 / 1 / 0 in project 2 and 16 / 16 / 14 in the original, with no deletion or development-data import.
